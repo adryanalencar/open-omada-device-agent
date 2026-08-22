@@ -43,20 +43,54 @@ The capability table is intentionally conservative. The agent advertises only
 components whose lifecycle is currently understood well enough not to mislead
 the controller.
 
-## Architecture
+## Protocol at a glance
+
+The most useful way to read ECSP is as a sequence of exchanges between the
+device and the controller. The diagram below shows the currently implemented V2
+path from first discovery to managed operation.
 
 ```mermaid
-flowchart LR
-    A[Open Omada Device Agent] -->|UDP 29810\nECSP discovery| C[Omada Controller]
-    C -->|PRE_ADOPT_REQUEST| A
-    A -->|TLS/TCP 29814\nECSP management| C
-    C -->|SYSTEM_NEGOTIATION\nSET / GET / NOTIFY| A
-    A -->|INFORM / responses| C
-    A --> S[(Local non-secret\nmanaged state)]
+sequenceDiagram
+    autonumber
+
+    participant AP as Device Agent
+    participant UDP as ECSP UDP :29810
+    participant CTX as Controller Context
+    participant TCP as ECSP TLS/TCP :29814
+    participant MGR as Omada Manager
+
+    Note over AP,MGR: Discovery and adoption
+    AP->>UDP: DISCOVERY
+    UDP->>MGR: Parse identity and capabilities
+    MGR->>CTX: Create pending device context
+    CTX-->>AP: PRE_ADOPT_REQUEST(adoptPort)
+
+    Note over AP,MGR: Authentication
+    AP->>TCP: TLS connection
+    AP->>TCP: PRE_CONNECT_INFO
+    MGR-->>AP: PRE_CONNECT_INFO_RESPONSE
+    AP->>TCP: DEVICE_VERIFY_INFO
+    MGR-->>AP: DEVICE_VERIFY_RESPONSE
+    AP->>TCP: SYSTEM_VERIFY_RESULT
+    MGR-->>AP: VERIFY_RESULT_ACK
+
+    Note over AP,MGR: Negotiation and initial synchronization
+    AP->>TCP: DEVICE_NEGOTIATION(configVersion, capabilities)
+    MGR-->>AP: SYSTEM_NEGOTIATION
+    AP->>TCP: INIT_SYNC_RESULT
+    MGR-->>AP: INIT_SYNC_RESULT_ACK
+
+    Note over AP,MGR: Managed operation
+    AP->>TCP: INFORM_REQUEST
+    MGR-->>AP: INFORM_RESPONSE
+    MGR->>AP: SET_REQUEST
+    AP-->>MGR: SET_RESPONSE
 ```
 
-See [docs/architecture.md](docs/architecture.md) and
-[docs/protocol-overview.md](docs/protocol-overview.md) for the complete model.
+Static software relationships are documented separately with architecture
+diagrams. See [docs/architecture.md](docs/architecture.md),
+[docs/protocol-overview.md](docs/protocol-overview.md), and
+[docs/device-lifecycle.md](docs/device-lifecycle.md) for the complete model.
 
 ## Quick start
 
@@ -123,17 +157,32 @@ are stopped and the agent performs **managed rediscovery** with
 without requiring another manual Adopt action in the normal recovery case.
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Discovery: no managed state
-    Discovery --> PreAdopt: controller discovers device
-    PreAdopt --> Verify: management TLS established
-    Verify --> Negotiate: mutual auth succeeds
-    Negotiate --> Managed: initial sync succeeds
-    Managed --> Managed: informs / config ACKs
-    Managed --> Reconnect: process or transport restarts
-    Reconnect --> Managed: direct reconnect succeeds
-    Reconnect --> Rediscovery: controller context is stale
-    Rediscovery --> Managed: context rebuilt
+sequenceDiagram
+    autonumber
+
+    participant AP as Device Agent
+    participant UDP as ECSP UDP :29810
+    participant TCP as ECSP TLS/TCP :29814
+    participant MGR as Omada Controller
+    participant STATE as Local managed state
+
+    Note over AP,STATE: Process starts with previously persisted managed state
+    AP->>STATE: Load controller, site and config metadata
+    AP->>TCP: PRE_CONNECT_INFO(rebuild=1)
+
+    alt Controller still has usable ECSP context
+        MGR-->>AP: PRE_CONNECT_INFO_RESPONSE
+        AP->>MGR: Verify and negotiate
+        MGR-->>AP: Managed session restored
+    else Controller context is stale
+        MGR--xAP: Close management connection
+        AP->>UDP: DISCOVERY(isFactory=false)
+        UDP->>MGR: Rebuild device context
+        AP->>TCP: Retry PRE_CONNECT_INFO(rebuild=1)
+        MGR-->>AP: PRE_CONNECT_INFO_RESPONSE
+        AP->>MGR: Verify and negotiate
+        MGR-->>AP: Managed session restored
+    end
 ```
 
 ## Documentation

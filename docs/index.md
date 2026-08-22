@@ -25,3 +25,10 @@ of complete compatibility with every Omada controller release or device family.
 The project is intentionally conservative: a message family is advertised as
 supported only when the device-side behavior is understood enough to avoid
 acknowledging configuration that the agent cannot actually model.
+
+## Diagram language
+
+Protocol and lifecycle documentation favors Mermaid `sequenceDiagram` blocks so
+that transport, direction, and message ordering are immediately visible. Static
+software relationships use `flowchart`, while internal lifecycle states use
+`stateDiagram-v2`.

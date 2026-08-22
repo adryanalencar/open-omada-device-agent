@@ -12,14 +12,27 @@ here.
 
 ## Transport model
 
-The observed lifecycle uses two principal transports:
+The observed lifecycle uses UDP for discovery and a TLS-protected TCP session
+for management. The sequence below shows the transport handoff rather than the
+full adoption handshake.
 
 ```mermaid
-flowchart LR
-    D[Device] -->|UDP discovery\n29810 by default| C[Controller]
-    C -->|PRE_ADOPT_REQUEST\nUDP| D
-    D -->|TLS over TCP\nmanagement port, commonly 29814| C
-    C <--> |Length-prefixed ECSP JSON| D
+sequenceDiagram
+    autonumber
+
+    participant D as Device
+    participant UDP as ECSP UDP Discovery :29810
+    participant MGR as Omada Controller
+    participant TCP as ECSP TLS/TCP Management :29814
+
+    D->>UDP: DISCOVERY
+    UDP->>MGR: Discovery message
+    MGR-->>D: PRE_ADOPT_REQUEST(adoptPort)
+    D->>TCP: TLS handshake to adoptPort
+    Note over D,TCP: ECSP JSON is carried inside the TLS session
+    D->>TCP: 4-byte length + JSON payload
+    TCP->>MGR: Decoded ECSP message
+    MGR-->>D: Length-prefixed ECSP response
 ```
 
 Port numbers are controller-configurable and should be treated as defaults, not
@@ -110,6 +123,25 @@ This matters because a device discovered without the proper site-scoped
 destination can remain in a pending scope that is not surfaced like a normal
 site device.
 
+The resulting discovery exchange is:
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    participant D as Device Agent
+    participant UDP as ECSP UDP Discovery
+    participant MGR as Omada Manager
+    participant SITE as Site-scoped Device Context
+
+    D->>UDP: DISCOVERY(header.dest = Site ID)
+    Note over D: controllerSetting.controllerId = Controller ID
+    UDP->>MGR: Parse discovery
+    MGR->>SITE: Resolve target site from header.dest
+    SITE-->>MGR: Site context
+    MGR->>MGR: Register pending/known device in site scope
+```
+
 ## Authentication
 
 The current implementation supports the validated legacy V2 `cipherType=5`
@@ -124,9 +156,26 @@ first_hash    = UPPERHEX(SHA256(username + password_hash))
 auth          = UPPERHEX(SHA256(first_hash + random_key))
 ```
 
-Both directions are verified: the device proves knowledge of the Device Account
-credential, and the controller response is verified before the agent reports a
-successful system-verification result.
+The handshake is mutual: the device proves knowledge of the configured Device
+Account credential and validates the controller-side proof before reporting
+successful system verification.
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    participant D as Device Agent
+    participant MGR as Omada Controller
+
+    D->>MGR: PRE_CONNECT_INFO(needUsername=true)
+    MGR-->>D: PRE_CONNECT_INFO_RESPONSE(username, randomKey, cipherCap)
+    D->>D: Derive passwordHash, firstHash and device proof
+    D->>MGR: DEVICE_VERIFY_INFO(auth, randomKeyForSystemVerify)
+    MGR-->>D: DEVICE_VERIFY_RESPONSE(error=0, auth)
+    D->>D: Verify controller proof
+    D->>MGR: SYSTEM_VERIFY_RESULT(error=0)
+    MGR-->>D: VERIFY_RESULT_ACK(error=0)
+```
 
 This legacy branch is preserved for interoperability research. It is not a
 recommendation to use MD5 for new authentication protocol design.
@@ -137,6 +186,26 @@ After verification, the device advertises component versions in
 `DEVICE_NEGOTIATION`. The controller returns its configuration and component
 view in `SYSTEM_NEGOTIATION`.
 
+```mermaid
+sequenceDiagram
+    autonumber
+
+    participant D as Device Agent
+    participant MGR as Omada Controller
+
+    D->>MGR: DEVICE_NEGOTIATION(configVersion, deviceInfo, components_v2)
+    MGR->>MGR: Compare device capabilities and configuration state
+    MGR-->>D: SYSTEM_NEGOTIATION(configVersion, sequenceId, settings)
+    D->>D: Initialize local managed configuration state
+    D->>MGR: INIT_SYNC_RESULT(error=0)
+    MGR-->>D: INIT_SYNC_RESULT_ACK(error=0)
+```
+
 Open Omada intentionally advertises a small component set. Claiming a component
 without implementing its command/inform semantics can cause the controller to
 provision state the agent cannot correctly apply.
+
+## Lifecycle documentation
+
+For the complete first-adoption, managed reconnect, rediscovery, configuration,
+and runtime sequences, see [Device lifecycle](device-lifecycle.md).

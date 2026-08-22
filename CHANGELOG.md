@@ -2,6 +2,12 @@
 
 All notable project changes will be documented in this file.
 
+## Unreleased
+
+### Documentation
+
+- Reworked ECSP protocol and lifecycle documentation around Mermaid sequence diagrams for clearer transport, ordering, authentication, configuration, reconnect, and managed-rediscovery flows.
+
 ## 0.1.0-alpha.1 - 2026-08-22
 
 Initial Open Omada public-alpha preparation.
