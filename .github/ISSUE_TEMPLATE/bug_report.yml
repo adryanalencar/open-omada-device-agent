@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a reproducible agent or protocol-handling bug
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please sanitize controller addresses, IDs, credentials, tokens, cookies, and unrelated client data before posting logs.
+  - type: input
+    id: controller_version
+    attributes:
+      label: Controller version
+      placeholder: "6.2.x"
+    validations:
+      required: true
+  - type: input
+    id: device_profile
+    attributes:
+      label: Device profile
+      placeholder: "EAP110 v4 reference profile"
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized protocol evidence
+      description: Include only the minimal relevant ECSP/log excerpt.

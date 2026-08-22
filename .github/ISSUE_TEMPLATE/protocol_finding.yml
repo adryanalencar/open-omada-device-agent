@@ -1,0 +1,34 @@
+name: Protocol finding
+description: Share a sanitized ECSP observation or interoperability result
+title: "protocol: "
+labels: ["protocol"]
+body:
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: Evidence level
+      options:
+        - Observed
+        - Validated
+        - Inferred
+        - Unknown
+    validations:
+      required: true
+  - type: input
+    id: controller_version
+    attributes:
+      label: Controller version
+    validations:
+      required: true
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding
+      description: Describe the message, field, state transition, or transport behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence_data
+    attributes:
+      label: Sanitized evidence
+      description: Do not include passwords, tokens, cookies, private keys, or proprietary vendor source code.
