@@ -4,7 +4,8 @@ from __future__ import annotations
 import argparse
 import logging
 
-from . import __version__, config, discovery
+from . import __version__, discovery
+from .bootstrap import AgentSettings, build_runtime
 from .session_state import clear_state
 
 
@@ -47,7 +48,9 @@ def main() -> None:
     log = logging.getLogger("open_omada.cli")
 
     try:
-        config.validate_runtime_config()
+        settings = AgentSettings.from_environment()
+        settings.validate()
+        build_runtime()
     except RuntimeError as exc:
         log.error("configuration error: %s", exc)
         raise SystemExit(2) from exc

@@ -1,0 +1,1 @@
+"""Outbound infrastructure adapters."""

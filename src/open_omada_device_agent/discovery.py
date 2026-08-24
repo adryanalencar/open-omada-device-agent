@@ -9,7 +9,7 @@ from typing import Any
 
 from . import config
 from .adoption import AuthenticationRejected, run_v2_adoption
-from .ecsp import (
+from .adapters.inbound.ecsp.protocol import (
     MAX_DISCOVERY_PAYLOAD,
     MessageType,
     build_message,

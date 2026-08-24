@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import config
-from .ap_config import parse_set_request
+from .adapters.inbound.ecsp.mappers.configuration import parse_set_request
 from .capabilities import ap_components_v2
 from .client_tracking import (
     client_stats_payload,
@@ -19,10 +19,9 @@ from .client_tracking import (
     load_dnsmasq_leases,
     merge_wireless_client_states,
 )
-from .crypto import calculate_md5_mode_auth
-from .device_commands import OpenWrtClientControlAdapter, SysfsLedAdapter
+from .adapters.inbound.ecsp.crypto import calculate_md5_mode_auth
 from .domain import AccessPointConfigUpdate
-from .ecsp import (
+from .adapters.inbound.ecsp.protocol import (
     CipherType,
     MessageType,
     build_message,
@@ -31,9 +30,7 @@ from .ecsp import (
     send_tcp_message,
 )
 from .identity import controller_setting, device_info, device_misc
-from .openwrt import OpenWrtUciAdapter
-from .platform_capabilities import capability_summary, detect_platform_capabilities
-from .portal_runtime import OpenWrtPortalRuntime
+from .bootstrap import build_runtime
 from .session_state import clear_state, save_state
 from .telemetry import collect_openwrt_wireless_clients, collect_openwrt_wireless_inform
 
@@ -180,6 +177,14 @@ def _inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
         body["clients"] = client_stats_payload(clients)
     body.update(collect_openwrt_wireless_inform())
     return body
+
+
+def _project_inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
+    """Production inform path: lifecycle supplies time, projection owns shape."""
+    return build_runtime().inform.build(
+        need_reply=need_reply,
+        uptime=max(0, int(time.monotonic() - started_at)),
+    )
 
 
 def _set_response_body(
@@ -333,63 +338,11 @@ def _describe_config_update(update: AccessPointConfigUpdate) -> str:
 
 
 def _apply_config_update(update: AccessPointConfigUpdate) -> int:
-    if update.unhandled_keys:
-        log.error("Unsupported AP SET_REQUEST keys: %s", ",".join(update.unhandled_keys))
+    result = build_runtime().apply_configuration.execute(update)
+    if not result.applied:
+        log.error("AP configuration reconciliation failed: %s", result.error)
         return CONFIG_ERROR
-
-    has_platform_config = (
-        update.radios
-        or update.wlans
-        or update.management_vlan is not None
-        or update.portal_free_policy is not None
-    )
-    has_device_commands = (
-        update.led is not None
-        or update.wifi_control_led is not None
-        or bool(update.client_configs)
-        or bool(update.client_operations)
-        or update.client_rate_config is not None
-    )
-    if not (has_platform_config or has_device_commands):
-        return CONFIG_OK
-
-    capabilities = detect_platform_capabilities()
-    log.info("Detected AP platform capabilities: %s", capability_summary(capabilities))
-    if has_platform_config:
-        result = OpenWrtUciAdapter().reconcile(update, capabilities)
-        if not result.applied:
-            log.error("AP platform config reconciliation failed: %s", result.error)
-            return CONFIG_ERROR
-        if result.changed:
-            log.info(
-                "Applied AP platform config through OpenWrt UCI: commands=%d",
-                result.command_count,
-            )
-        else:
-            log.info("AP platform config required no local UCI changes")
-
-        result = OpenWrtPortalRuntime().reconcile(update, capabilities)
-        if not result.applied:
-            log.error("AP portal runtime reconciliation failed: %s", result.error)
-            return CONFIG_ERROR
-        if result.changed:
-            log.info("Applied AP portal enforcement through local nftables adapter")
-
-    if has_device_commands:
-        result = SysfsLedAdapter().reconcile(update, capabilities)
-        if not result.applied:
-            log.error("AP device command reconciliation failed: %s", result.error)
-            return CONFIG_ERROR
-        if result.changed:
-            log.info("Applied AP device command through local platform adapter")
-
-        result = OpenWrtClientControlAdapter().reconcile(update, capabilities)
-        if not result.applied:
-            log.error("AP client control reconciliation failed: %s", result.error)
-            return CONFIG_ERROR
-        if result.changed:
-            log.info("Applied AP client control through local platform adapter")
-
+    log.info("AP configuration reconciliation completed: changed=%s", result.changed)
     return CONFIG_OK
 
 
@@ -448,7 +401,7 @@ def _send_inform(
     inform = build_message(
         mac=config.MAC,
         msg_type=MessageType.INFORM_REQUEST,
-        body=_inform_body(need_reply=need_reply, started_at=started_at),
+        body=_project_inform_body(need_reply=need_reply, started_at=started_at),
         version=config.ECSP_VERSION,
         ver_cap=config.ECSP_VER_CAP,
         seq=seq,
