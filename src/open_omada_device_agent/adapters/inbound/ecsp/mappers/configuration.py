@@ -4,27 +4,20 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from .....domain import (
-    AccessPointConfigUpdate,
-    CaptivePortalBinding,
-    ClientAuthConfig,
-    ClientControlOperation,
-    ClientRateConfig,
-    ClientRateLimit,
-    DhcpOption82,
-    LedConfig,
-    ManagementVlan,
-    PortalFreePolicy,
-    RadioBand,
-    RadioConfig,
-    SecretValue,
-    VlanAssignment,
-    WifiControlLedConfig,
-    WirelessNetwork,
-    WirelessSecurity,
-    validate_ssid_name,
-    validate_vlan_id,
+from .....application.commands import ApplyDeviceConfigurationCommand
+from .....contexts.clients.domain import (
+    ClientAuthConfig, ClientControlOperation, ClientRateConfig, ClientRateLimit,
+    LedConfig, WifiControlLedConfig,
 )
+from .....contexts.networking.domain import ManagementVlan, validate_vlan_id
+from .....contexts.portal.domain import PortalFreePolicy
+from .....contexts.wireless.domain import (
+    CaptivePortalIntent, RadioBand, RadioConfig, WirelessDhcpOption82Intent,
+    WirelessNetwork, WirelessSecurity, WirelessVlanIntent, validate_ssid_name,
+)
+from .....shared.domain import SecretValue
+
+AccessPointConfigUpdate = ApplyDeviceConfigurationCommand
 
 RADIO_KEYS: dict[str, RadioBand] = {
     "wirelessBasic_2G": RadioBand.TWO_G,
@@ -182,7 +175,7 @@ def _parse_ssid_item(
         name=name,
         broadcast=_optional_bool(data.get("ssidBcast")),
         client_isolation=_optional_bool(data.get("ssidIsolation")),
-        vlan=VlanAssignment(
+        vlan=WirelessVlanIntent(
             vlan_id=vlan_id,
             vlan_pool_ids=tuple(str(value) for value in data.get("vlanPoolIds") or ()),
             dynamic_vlan_mode=_optional_int(data.get("dyVlanMode")),
@@ -213,7 +206,7 @@ def _parse_ssid_item(
             ),
             raw=dict(data),
         ),
-        portal=CaptivePortalBinding(
+        portal=CaptivePortalIntent(
             enabled=bool(data.get("portal")),
             https_redirect=_optional_bool(data.get("httpsRedirectEnable")),
             hotspot_v2=_optional_mapping(data.get("hotspotV2")),
@@ -223,11 +216,11 @@ def _parse_ssid_item(
     )
 
 
-def _parse_dhcp_option82(raw: Any) -> DhcpOption82 | None:
+def _parse_dhcp_option82(raw: Any) -> WirelessDhcpOption82Intent | None:
     if raw is None:
         return None
     data = _require_mapping(raw, "DHCP option 82 config")
-    return DhcpOption82(
+    return WirelessDhcpOption82Intent(
         enabled=bool(data.get("option82En")),
         format=_optional_int(data.get("option82Format")),
         delimiter=_optional_str(data.get("delimiter")),

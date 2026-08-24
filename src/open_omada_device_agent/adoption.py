@@ -13,14 +13,10 @@ from typing import Any
 from . import config
 from .adapters.inbound.ecsp.mappers.configuration import parse_set_request
 from .capabilities import ap_components_v2
-from .client_tracking import (
-    client_stats_payload,
-    clients_from_dhcp_leases,
-    load_dnsmasq_leases,
-    merge_wireless_client_states,
-)
+
 from .adapters.inbound.ecsp.crypto import calculate_md5_mode_auth
-from .domain import AccessPointConfigUpdate
+from .application.commands import ApplyDeviceConfigurationCommand
+
 from .adapters.inbound.ecsp.protocol import (
     CipherType,
     MessageType,
@@ -30,9 +26,8 @@ from .adapters.inbound.ecsp.protocol import (
     send_tcp_message,
 )
 from .identity import controller_setting, device_info, device_misc
-from .bootstrap import build_runtime
-from .session_state import clear_state, save_state
-from .telemetry import collect_openwrt_wireless_clients, collect_openwrt_wireless_inform
+from .contexts.lifecycle.application import ManagedSessionServices
+
 
 log = logging.getLogger("open_omada.adoption")
 CONFIG_OK = 0
@@ -141,47 +136,9 @@ def _device_negotiation_body(
     }
 
 
-def _inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
-    """Build the minimal periodic AP inform used after initial sync.
-
-    Controller 6.2.14.11 advertises ``informInterval.base=3`` and
-    ``informInterval.deviceInfo=3`` during SYSTEM_NEGOTIATION.  A real managed
-    AP therefore starts reporting device information immediately after the
-    adoption handshake instead of leaving the manage socket completely idle.
-
-    ``EapInformDeviceInfo`` accepts additional JSON properties, so reusing the
-    discovery identity is safe.  The two semantic changes below are important:
-    the device is no longer factory-new after adoption and uptime now advances.
-    """
-    info = dict(device_info())
-    info["isFactory"] = False
-    info["upTime"] = str(max(0, int(time.monotonic() - started_at)))
-    body = {
-        "needReply": 1 if need_reply else 0,
-        "deviceInfo": info,
-        # Wired APs are expected to report lanInfo.  Without it Controller 6.2
-        # keeps warning "Missing lan info for wired ap" and cannot populate
-        # the uplink details used by topology/health views.  LanInfo.rate is a
-        # numeric string in manager-message and is parsed with Double.parseDouble.
-        "lanInfo": {
-            "rate": str(config.LAN_RATE),
-            "duplex": int(config.LAN_DUPLEX),
-            "port": config.LAN_PORT,
-        },
-    }
-    clients = merge_wireless_client_states(
-        clients_from_dhcp_leases(load_dnsmasq_leases(config.DHCP_LEASE_FILE)),
-        collect_openwrt_wireless_clients(),
-    )
-    if clients:
-        body["clients"] = client_stats_payload(clients)
-    body.update(collect_openwrt_wireless_inform())
-    return body
-
-
-def _project_inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
+def _project_inform_body(*, services: ManagedSessionServices, need_reply: bool, started_at: float) -> dict[str, Any]:
     """Production inform path: lifecycle supplies time, projection owns shape."""
-    return build_runtime().inform.build(
+    return services.inform.build(
         need_reply=need_reply,
         uptime=max(0, int(time.monotonic() - started_at)),
     )
@@ -286,7 +243,7 @@ def _notify_reply_body(
     return reply
 
 
-def _describe_config_update(update: AccessPointConfigUpdate) -> str:
+def _describe_config_update(update: ApplyDeviceConfigurationCommand) -> str:
     parts = [
         f"sequenceId={update.sequence_id}",
         f"configVersion={update.config_version}",
@@ -337,8 +294,8 @@ def _describe_config_update(update: AccessPointConfigUpdate) -> str:
     return " ".join(parts)
 
 
-def _apply_config_update(update: AccessPointConfigUpdate) -> int:
-    result = build_runtime().apply_configuration.execute(update)
+def _apply_config_update(update: ApplyDeviceConfigurationCommand, *, services: ManagedSessionServices) -> int:
+    result = services.configuration.execute(update)
     if not result.applied:
         log.error("AP configuration reconciliation failed: %s", result.error)
         return CONFIG_ERROR
@@ -353,6 +310,7 @@ def _send_set_response(
     controller_id: str,
     current_config_version: int | None,
     dump_json: bool,
+    services: ManagedSessionServices,
 ) -> tuple[int, int, int]:
     """Acknowledge a controller SET_REQUEST and return version/sequence."""
     request_header = request.get("header") or {}
@@ -360,7 +318,7 @@ def _send_set_response(
     try:
         update = parse_set_request(request)
         log.info("Parsed AP SET_REQUEST domains: %s", _describe_config_update(update))
-        errcode = _apply_config_update(update)
+        errcode = _apply_config_update(update, services=services)
     except ValueError as exc:
         errcode = CONFIG_ERROR
         log.warning("Could not parse AP config domains in SET_REQUEST: %s", exc)
@@ -397,11 +355,12 @@ def _send_inform(
     started_at: float,
     need_reply: bool,
     dump_json: bool,
+    services: ManagedSessionServices,
 ) -> None:
     inform = build_message(
         mac=config.MAC,
         msg_type=MessageType.INFORM_REQUEST,
-        body=_project_inform_body(need_reply=need_reply, started_at=started_at),
+        body=_project_inform_body(services=services, need_reply=need_reply, started_at=started_at),
         version=config.ECSP_VERSION,
         ver_cap=config.ECSP_VER_CAP,
         seq=seq,
@@ -514,6 +473,7 @@ def run_v2_adoption(
     dump_json: bool = False,
     managed_reconnect: bool = False,
     known_config_version: int | None = None,
+    services: ManagedSessionServices,
 ) -> AdoptionResult:
     if not controller_id:
         raise RuntimeError(
@@ -748,7 +708,7 @@ def run_v2_adoption(
                 config_version = int(system_body["configVersion"])
             if system_body.get("sequenceId") is not None:
                 sequence_id = int(system_body["sequenceId"])
-        saved = save_state(
+        saved = services.state_repository.save(
             controller_id=controller_id,
             manage_port=adopt_port,
             site_id=config.SITE_ID,
@@ -776,6 +736,7 @@ def run_v2_adoption(
             started_at=started_at,
             need_reply=True,
             dump_json=dump_json,
+            services=services,
         )
         next_inform_at = time.monotonic() + max(0.5, config.INFORM_INTERVAL)
 
@@ -795,6 +756,7 @@ def run_v2_adoption(
                     started_at=started_at,
                     need_reply=False,
                     dump_json=dump_json,
+                    services=services,
                 )
                 next_inform_at = now + max(0.5, config.INFORM_INTERVAL)
 
@@ -813,6 +775,7 @@ def run_v2_adoption(
                     controller_id=controller_id,
                     current_config_version=config_version,
                     dump_json=dump_json,
+                    services=services,
                 )
                 if set_errcode != CONFIG_OK:
                     log.error(
@@ -823,7 +786,7 @@ def run_v2_adoption(
                     continue
                 config_version = applied_config_version
                 sequence_id = applied_sequence_id
-                save_state(
+                services.state_repository.save(
                     controller_id=controller_id,
                     manage_port=adopt_port,
                     site_id=config.SITE_ID,
@@ -870,7 +833,7 @@ def run_v2_adoption(
                     controller_id=controller_id,
                     dump_json=dump_json,
                 )
-                cleared = clear_state()
+                cleared = services.state_repository.clear()
                 log.warning(
                     "Controller sent %s; replied with %s, cleared managed state=%s and ending session",
                     message_type_name(msg_type),

@@ -6,7 +6,6 @@ import logging
 
 from . import __version__, discovery
 from .bootstrap import AgentSettings, build_runtime
-from .session_state import clear_state
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,19 +49,20 @@ def main() -> None:
     try:
         settings = AgentSettings.from_environment()
         settings.validate()
-        build_runtime()
+        runtime = build_runtime()
     except RuntimeError as exc:
         log.error("configuration error: %s", exc)
         raise SystemExit(2) from exc
 
     if args.clear_state:
-        if clear_state():
+        if runtime.state_repository.clear():
             log.warning("Cleared local managed reconnect state; forcing discovery/adoption")
         else:
             log.info("No local managed reconnect state existed; forcing discovery/adoption")
 
     try:
         discovery.run(
+            services=runtime,
             once=args.once,
             dump_tx=args.dump_tx,
             no_adopt=args.no_adopt,

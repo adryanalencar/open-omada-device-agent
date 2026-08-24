@@ -1,13 +1,14 @@
 import time
 
 from open_omada_device_agent import config
+from open_omada_device_agent.bootstrap import build_runtime
 from open_omada_device_agent.adoption import (
     CONFIG_ERROR,
     _apply_config_update,
     _describe_config_update,
     _device_negotiation_body,
     _get_response_body,
-    _inform_body,
+    _project_inform_body,
     _notify_reply_body,
     _preconnect_body,
     _send_forget_response,
@@ -56,7 +57,7 @@ def test_advertised_v2_component_versions_have_ecsp_major_minor_shape():
 
 
 def test_post_adoption_inform_is_not_factory_and_requests_reply_when_asked():
-    body = _inform_body(need_reply=True, started_at=time.monotonic() - 5)
+    body = _project_inform_body(services=build_runtime(), need_reply=True, started_at=time.monotonic() - 5)
 
     assert body["needReply"] == 1
     assert body["deviceInfo"]["isFactory"] is False
@@ -72,11 +73,13 @@ def test_inform_includes_real_dhcp_lease_clients_when_available(tmp_path, monkey
     )
     monkeypatch.setattr(config, "DHCP_LEASE_FILE", str(leases))
     monkeypatch.setattr(
-        "open_omada_device_agent.adoption.collect_openwrt_wireless_clients",
+        "open_omada_device_agent.bootstrap.runtime.collect_openwrt_wireless_clients",
         lambda: (),
     )
 
-    body = _inform_body(need_reply=False, started_at=time.monotonic())
+    from open_omada_device_agent.bootstrap import build_runtime
+    build_runtime.cache_clear()
+    body = _project_inform_body(services=build_runtime(), need_reply=False, started_at=time.monotonic())
 
     assert body["clients"][0]["mac"] == "aa:bb:cc:dd:ee:ff"
     assert body["clients"][0]["ip"] == "192.0.2.10"
@@ -101,7 +104,7 @@ def test_first_adoption_preconnect_keeps_prelink_shape():
 
 
 def test_inform_reports_minimal_wired_lan_info():
-    body = _inform_body(need_reply=False, started_at=time.monotonic())
+    body = _project_inform_body(services=build_runtime(), need_reply=False, started_at=time.monotonic())
 
     assert float(body["lanInfo"]["rate"]) > 0
     assert isinstance(body["lanInfo"]["duplex"], int)
@@ -356,4 +359,4 @@ def test_describe_config_update_reports_domains_without_secrets():
 def test_apply_config_update_rejects_unhandled_keys_without_fake_ack():
     update = parse_config_body({"unsupportedCommand": {"enabled": True}})
 
-    assert _apply_config_update(update) == CONFIG_ERROR
+    assert _apply_config_update(update, services=build_runtime()) == CONFIG_ERROR

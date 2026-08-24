@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from open_omada_device_agent.contexts.device.application import ApplyDeviceConfiguration
+from open_omada_device_agent.application.configuration import ApplyDeviceConfiguration
 from open_omada_device_agent.domain import AccessPointConfigUpdate, LedConfig, RadioBand, RadioConfig
 
 

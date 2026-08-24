@@ -22,3 +22,9 @@ Domain behavior is testable without OpenWrt and the managed session no longer
 constructs configuration adapters. Some flat façades and collectors remain
 until callers migrate; architecture tests prevent dependencies from turning
 outward again.
+
+The aggregate configuration workflow is deliberately placed in the top-level
+application orchestration package rather than the Device context because it
+coordinates Wireless, Networking, Clients, Portal, and device-command intents.
+Lifecycle receives configuration, Inform, and persistence dependencies through
+ports; it does not import the composition root or platform collectors.

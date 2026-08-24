@@ -9,6 +9,7 @@ from typing import Any
 
 from . import config
 from .adoption import AuthenticationRejected, run_v2_adoption
+from .contexts.lifecycle.application import ManagedSessionServices
 from .adapters.inbound.ecsp.protocol import (
     MAX_DISCOVERY_PAYLOAD,
     MessageType,
@@ -19,7 +20,6 @@ from .adapters.inbound.ecsp.protocol import (
     normalize_mac,
 )
 from .identity import controller_setting, device_info, device_misc
-from .session_state import load_state
 
 log = logging.getLogger("open_omada.discovery")
 
@@ -75,7 +75,7 @@ def _retry_delay() -> float:
     return max(0.5, config.RECONNECT_DELAY)
 
 
-def _run_saved_managed_session(*, dump_tx: bool) -> bool:
+def _run_saved_managed_session(*, dump_tx: bool, services: ManagedSessionServices) -> bool:
     """Reconnect an already-adopted device.
 
     Returns False when several consecutive attempts die before initial sync.
@@ -88,7 +88,7 @@ def _run_saved_managed_session(*, dump_tx: bool) -> bool:
     max_failures = max(1, int(config.MANAGED_RECONNECT_ATTEMPTS))
 
     while True:
-        state = load_state()
+        state = services.state_repository.load()
         if state is None:
             return False
 
@@ -100,6 +100,7 @@ def _run_saved_managed_session(*, dump_tx: bool) -> bool:
         )
         try:
             result = run_v2_adoption(
+                services=services,
                 controller_host=state.controller_host,
                 adopt_port=state.manage_port,
                 controller_id=state.controller_id,
@@ -157,7 +158,7 @@ def _run_saved_managed_session(*, dump_tx: bool) -> bool:
         time.sleep(_retry_delay())
 
 
-def _try_bootstrap_managed_reconnect(*, dump_tx: bool) -> bool:
+def _try_bootstrap_managed_reconnect(*, dump_tx: bool, services: ManagedSessionServices) -> bool:
     """Upgrade path for devices adopted before local reconnect state existed."""
     if not config.CONTROLLER_ID:
         return False
@@ -170,13 +171,14 @@ def _try_bootstrap_managed_reconnect(*, dump_tx: bool) -> bool:
     for auth_attempt in range(1, 4):
         try:
             result = run_v2_adoption(
+                services=services,
                 controller_host=config.CONTROLLER_HOST,
                 adopt_port=config.MANAGE_PORT,
                 controller_id=config.CONTROLLER_ID,
                 dump_json=dump_tx,
                 managed_reconnect=True,
             )
-            if load_state() is not None:
+            if services.state_repository.load() is not None:
                 return True
             if result.reached_system_verify:
                 log.warning(
@@ -210,6 +212,7 @@ def _try_bootstrap_managed_reconnect(*, dump_tx: bool) -> bool:
 
 def run(
     *,
+    services: ManagedSessionServices,
     once: bool = False,
     dump_tx: bool = False,
     no_adopt: bool = False,
@@ -218,23 +221,23 @@ def run(
     # Once initial sync has completed, only non-secret routing state is stored.
     # Normal restarts therefore skip discovery/adoption and reconnect directly
     # to the V2 manage port like an already-managed EAP.
-    saved_state = load_state()
+    saved_state = services.state_repository.load()
     managed_recovery = False
     if not force_discovery and not no_adopt and not once and saved_state is not None:
-        if _run_saved_managed_session(dump_tx=dump_tx):
+        if _run_saved_managed_session(dump_tx=dump_tx, services=services):
             return
         # The controller closed PRE_CONNECT before it could reply repeatedly.
         # Keep the state file and re-advertise the same adopted MAC/site over
         # UDP so manager-core can reconstruct its device image/context.
         managed_recovery = True
-        saved_state = load_state()
+        saved_state = services.state_repository.load()
 
     # Older agent versions did not persist state. Try the ordinary managed
     # reconnect path once before discovery so an already-adopted AP can upgrade
     # without one final manual Adopt click.
     if not managed_recovery and not force_discovery and not no_adopt and not once:
-        if _try_bootstrap_managed_reconnect(dump_tx=dump_tx):
-            _run_saved_managed_session(dump_tx=dump_tx)
+        if _try_bootstrap_managed_reconnect(dump_tx=dump_tx, services=services):
+            _run_saved_managed_session(dump_tx=dump_tx, services=services)
             return
 
     target = (config.CONTROLLER_HOST, config.DISCOVERY_PORT)
@@ -322,6 +325,7 @@ def run(
                             saved_state.manage_port,
                         )
                         result = run_v2_adoption(
+                services=services,
                             controller_host=saved_state.controller_host,
                             adopt_port=saved_state.manage_port,
                             controller_id=saved_state.controller_id,
@@ -330,7 +334,7 @@ def run(
                             known_config_version=saved_state.config_version,
                         )
                         if result.reached_system_verify:
-                            _run_saved_managed_session(dump_tx=dump_tx)
+                            _run_saved_managed_session(dump_tx=dump_tx, services=services)
                             return
                     except AuthenticationRejected as exc:
                         log.error(
@@ -386,6 +390,7 @@ def run(
             # the same process/NAT mapping after the credentials are corrected.
             try:
                 run_v2_adoption(
+                    services=services,
                     controller_host=config.CONTROLLER_HOST,
                     adopt_port=adopt_port,
                     controller_id=controller_id,
@@ -409,10 +414,10 @@ def run(
             # run_v2_adoption normally remains here for the lifetime of the
             # manage connection. If it returns after successful sync, state now
             # exists and subsequent connections can bypass manual adoption.
-            if load_state() is not None:
+            if services.state_repository.load() is not None:
                 break
             next_send = 0.0
     finally:
         sock.close()
 
-    _run_saved_managed_session(dump_tx=dump_tx)
+    _run_saved_managed_session(dump_tx=dump_tx, services=services)

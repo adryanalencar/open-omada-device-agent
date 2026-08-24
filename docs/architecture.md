@@ -118,12 +118,13 @@ changing the inform assembler or managed-session protocol.
 
 ## Ports and adapters
 
-Current application ports are `ConfigurationPort` and `CapabilityDetector`.
-They are consumed by `ApplyDeviceConfiguration`; implementations are
+Current application ports are `ConfigurationPort`, `CapabilityDetector`,
+`InformProvider`, and `SessionStateRepository`. Configuration ports are consumed
+by the cross-context `ApplyDeviceConfiguration` orchestrator; implementations are
 `OpenWrtUciAdapter`, `OpenWrtPortalRuntime`, `SysfsLedAdapter`, and
 `OpenWrtClientControlAdapter`. `InformAssembler` receives callable observation
-ports. Managed state is represented in lifecycle domain and persisted by the
-JSON adapter under `contexts.lifecycle.infrastructure`.
+ports. Managed state is represented in lifecycle domain and persisted by the injected
+`JsonSessionStateRepository` adapter under `contexts.lifecycle.infrastructure`.
 
 ## Extension points
 
@@ -150,5 +151,6 @@ component only after its behavior is implemented.
 `domain.py`, `ecsp.py`, `crypto.py`, `ap_config.py`, `openwrt.py`, and
 `session_state.py` re-export relocated APIs. They preserve external imports and
 existing characterization tests during migration. New internal code must not
-use these façades. Remaining flat platform modules are tracked as incremental
-migration debt; moving them must not duplicate their implementations.
+use these façades. Concrete OpenWrt UCI, capability detection, telemetry, client
+observations, device commands, and portal enforcement live under
+`adapters.outbound.openwrt`; the façades contain no duplicate implementation.

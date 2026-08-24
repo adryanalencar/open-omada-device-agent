@@ -12,8 +12,10 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from .... import config
-from ....domain import AccessPointConfigUpdate, RadioBand, RadioConfig, WirelessNetwork
-from ....platform_capabilities import PlatformCapabilities
+from ....application.commands import ApplyDeviceConfigurationCommand
+from ....contexts.wireless.domain import RadioBand, RadioConfig, WirelessNetwork
+
+from ....application.contracts import PlatformCapabilities
 
 
 class CommandRunner(Protocol):
@@ -58,7 +60,7 @@ class OpenWrtUciAdapter:
 
     def reconcile(
         self,
-        update: AccessPointConfigUpdate,
+        update: ApplyDeviceConfigurationCommand,
         capabilities: PlatformCapabilities,
     ) -> ReconciliationResult:
         errors = validate_update(update, capabilities)
@@ -95,7 +97,7 @@ class OpenWrtUciAdapter:
 
 
 def validate_update(
-    update: AccessPointConfigUpdate,
+    update: ApplyDeviceConfigurationCommand,
     capabilities: PlatformCapabilities,
 ) -> tuple[str, ...]:
     errors: list[str] = []
@@ -168,7 +170,7 @@ def validate_update(
 
 
 def build_uci_batch(
-    update: AccessPointConfigUpdate,
+    update: ApplyDeviceConfigurationCommand,
     capabilities: PlatformCapabilities,
 ) -> tuple[str, ...]:
     lines: list[str] = []
@@ -250,7 +252,7 @@ def _ssid_vlan_lines(vlan_id: int) -> tuple[str, ...]:
     )
 
 
-def _management_vlan_lines(update: AccessPointConfigUpdate) -> tuple[str, ...]:
+def _management_vlan_lines(update: ApplyDeviceConfigurationCommand) -> tuple[str, ...]:
     management_vlan = update.management_vlan
     if management_vlan is None:
         return ()

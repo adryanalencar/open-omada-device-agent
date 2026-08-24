@@ -12,7 +12,7 @@ from typing import Any
 from ..domain import ManagedState
 
 from .... import config
-from ....adapters.inbound.ecsp.protocol import normalize_mac
+from ....shared.domain import MacAddress
 
 log = logging.getLogger("open_omada.state")
 STATE_VERSION = 1
@@ -39,7 +39,7 @@ def load_state(path: str | os.PathLike[str] | None = None) -> ManagedState | Non
     try:
         state = ManagedState(
             version=int(raw.get("version", 0)),
-            mac=normalize_mac(str(raw["mac"])),
+            mac=MacAddress(str(raw["mac"])).value,
             controller_host=str(raw["controller_host"]),
             controller_id=str(raw["controller_id"]),
             manage_port=int(raw["manage_port"]),
@@ -68,12 +68,12 @@ def load_state(path: str | os.PathLike[str] | None = None) -> ManagedState | Non
             state.version,
         )
         return None
-    if state.mac != normalize_mac(config.MAC):
+    if state.mac != MacAddress(config.MAC).value:
         log.info(
             "Ignoring managed-state file %s because it belongs to MAC %s, not %s",
             state_path,
             state.mac,
-            normalize_mac(config.MAC),
+            MacAddress(config.MAC).value,
         )
         return None
     if state.controller_host != config.CONTROLLER_HOST:
@@ -102,7 +102,7 @@ def save_state(
 ) -> ManagedState:
     state = ManagedState(
         version=STATE_VERSION,
-        mac=normalize_mac(config.MAC),
+        mac=MacAddress(config.MAC).value,
         controller_host=config.CONTROLLER_HOST,
         controller_id=controller_id,
         manage_port=int(manage_port),
@@ -130,3 +130,19 @@ def clear_state(path: str | os.PathLike[str] | None = None) -> bool:
         return True
     except FileNotFoundError:
         return False
+
+
+class JsonSessionStateRepository:
+    """JSON-file implementation of the lifecycle persistence port."""
+
+    def __init__(self, path: str | os.PathLike[str] | None = None) -> None:
+        self._path = path
+
+    def load(self) -> ManagedState | None:
+        return load_state(self._path)
+
+    def save(self, **state: Any) -> ManagedState:
+        return save_state(path=self._path, **state)
+
+    def clear(self) -> bool:
+        return clear_state(self._path)
