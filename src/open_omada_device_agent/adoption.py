@@ -27,7 +27,7 @@ from .ecsp import (
 from .identity import controller_setting, device_info, device_misc
 from .openwrt import OpenWrtUciAdapter
 from .platform_capabilities import capability_summary, detect_platform_capabilities
-from .session_state import save_state
+from .session_state import clear_state, save_state
 from .telemetry import collect_openwrt_wireless_inform
 
 log = logging.getLogger("open_omada.adoption")
@@ -352,6 +352,37 @@ def _send_inform(
     )
     send_tcp_message(sock, inform)
     _log_message("TX/TCP", inform, dump_json=dump_json)
+
+
+def _send_forget_response(
+    sock: socket.socket,
+    request: dict[str, Any],
+    *,
+    controller_id: str,
+    dump_json: bool,
+) -> MessageType:
+    request_type = int((request.get("header") or {}).get("type", -1))
+    if request_type == int(MessageType.FORGET_REQUEST_NO_RESET):
+        response_type = MessageType.FORGET_RESPONSE_NO_RESET
+    elif request_type == int(MessageType.FORGET_REQUEST):
+        response_type = MessageType.FORGET_RESPONSE
+    else:
+        raise RuntimeError(f"cannot build forget response for message type {request_type}")
+
+    response = build_message(
+        mac=config.MAC,
+        msg_type=response_type,
+        body={},
+        version=config.ECSP_VERSION,
+        ver_cap=config.ECSP_VER_CAP,
+        seq=None,
+        dest=controller_id,
+        timestamp=int(time.time() * 1000),
+        error=0,
+    )
+    send_tcp_message(sock, response)
+    _log_message("TX/TCP", response, dump_json=dump_json)
+    return response_type
 
 
 def run_v2_adoption(
@@ -683,6 +714,24 @@ def run_v2_adoption(
                     applied_config_version,
                     applied_sequence_id,
                 )
+            elif msg_type in {
+                int(MessageType.FORGET_REQUEST),
+                int(MessageType.FORGET_REQUEST_NO_RESET),
+            }:
+                response_type = _send_forget_response(
+                    sock,
+                    message,
+                    controller_id=controller_id,
+                    dump_json=dump_json,
+                )
+                cleared = clear_state()
+                log.warning(
+                    "Controller sent %s; replied with %s, cleared managed state=%s and ending session",
+                    message_type_name(msg_type),
+                    response_type.name,
+                    cleared,
+                )
+                return AdoptionResult(managed_ready, controller_id, username)
 
     except (EOFError, ConnectionError, OSError) as exc:
         log.warning("ECSP TCP session ended: %s", exc)

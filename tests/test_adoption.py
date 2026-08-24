@@ -7,11 +7,21 @@ from open_omada_device_agent.adoption import (
     _device_negotiation_body,
     _inform_body,
     _preconnect_body,
+    _send_forget_response,
     _set_response_body,
 )
 from open_omada_device_agent.discovery import build_discovery
 from open_omada_device_agent.capabilities import AP_COMPONENTS_V2
 from open_omada_device_agent.ap_config import parse_config_body
+from open_omada_device_agent.ecsp import MessageType, decode_frame
+
+
+class RecordingSocket:
+    def __init__(self):
+        self.sent = b""
+
+    def sendall(self, data):
+        self.sent += data
 
 
 def test_device_negotiation_has_required_non_null_v2_fields():
@@ -140,6 +150,40 @@ def test_set_response_derives_absolute_version_from_config_version_inc():
         "errcode": 0,
         "configVersion": 3,
     }
+
+
+def test_forget_response_uses_confirmed_response_type_without_seq():
+    sock = RecordingSocket()
+
+    response_type = _send_forget_response(
+        sock,
+        {"header": {"type": int(MessageType.FORGET_REQUEST), "seq": 99}},
+        controller_id="controller-id",
+        dump_json=False,
+    )
+
+    message = decode_frame(sock.sent)
+    assert response_type is MessageType.FORGET_RESPONSE
+    assert message["header"]["type"] == int(MessageType.FORGET_RESPONSE)
+    assert "seq" not in message["header"]
+    assert message["header"]["dest"] == "controller-id"
+    assert message["body"] == {}
+
+
+def test_forget_no_reset_response_uses_no_reset_type():
+    sock = RecordingSocket()
+
+    response_type = _send_forget_response(
+        sock,
+        {"header": {"type": int(MessageType.FORGET_REQUEST_NO_RESET), "seq": 99}},
+        controller_id="controller-id",
+        dump_json=False,
+    )
+
+    message = decode_frame(sock.sent)
+    assert response_type is MessageType.FORGET_RESPONSE_NO_RESET
+    assert message["header"]["type"] == int(MessageType.FORGET_RESPONSE_NO_RESET)
+    assert "seq" not in message["header"]
 
 
 def test_set_response_rejects_increment_when_current_version_is_unknown():
