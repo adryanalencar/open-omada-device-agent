@@ -209,31 +209,11 @@ sequenceDiagram
 
 ## Project layout
 
-```text
-.
-├── src/open_omada_device_agent/
-│   ├── adoption.py          # TLS, verification, negotiation, managed channel
-│   ├── ap_config.py         # AP SET_REQUEST domain parser
-│   ├── capabilities.py      # conservative component advertisement
-│   ├── client_tracking.py   # DHCP lease to client inform mapping
-│   ├── config.py            # OMADA_* environment configuration
-│   ├── crypto.py            # legacy V2 authentication primitives
-│   ├── device_commands.py   # local LED/device command adapters
-│   ├── discovery.py         # UDP discovery and reconnect supervision
-│   ├── domain.py            # AP config/client/portal domain models
-│   ├── ecsp.py              # message types and length-prefixed JSON codec
-│   ├── identity.py          # reference AP identity and telemetry
-│   ├── openwrt.py           # OpenWrt UCI reconciliation
-│   ├── portal.py            # captive portal session lifecycle
-│   ├── portal_enforcement.py# nftables captive portal policy adapter
-│   ├── radius.py            # minimal RADIUS PAP client
-│   ├── session_state.py     # non-secret managed state persistence
-│   ├── telemetry.py         # OpenWrt wireless inform telemetry
-│   └── cli.py               # command-line entry point
-├── docs/
-├── tests/
-└── pyproject.toml
-```
+The implementation is organized around bounded contexts rather than global
+technical layers. ECSP is an inbound anti-corruption layer, OpenWrt is an
+outbound adapter, and `bootstrap/` is the composition root. Stable flat modules
+remain temporary compatibility façades. See [the architecture guide](docs/architecture.md)
+for context APIs, dependency rules, flows, and extension guides.
 
 ## Research and provenance
 

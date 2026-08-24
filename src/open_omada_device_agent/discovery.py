@@ -7,9 +7,9 @@ import socket
 import time
 from typing import Any
 
-from . import config
 from .adoption import AuthenticationRejected, run_v2_adoption
-from .ecsp import (
+from .contexts.lifecycle.application import ManagedSessionServices
+from .adapters.inbound.ecsp.protocol import (
     MAX_DISCOVERY_PAYLOAD,
     MessageType,
     build_message,
@@ -18,8 +18,9 @@ from .ecsp import (
     message_type_name,
     normalize_mac,
 )
-from .identity import controller_setting, device_info, device_misc
-from .session_state import load_state
+from .identity import controller_setting
+from .application.settings import AgentSettings
+from .contexts.device.domain import DeviceProfile
 
 log = logging.getLogger("open_omada.discovery")
 
@@ -29,9 +30,11 @@ def build_discovery(
     controller_id: str = "",
     destination_id: str = "",
     *,
+    settings: AgentSettings,
+    profile: DeviceProfile,
     managed_restart: bool = False,
 ) -> dict[str, Any]:
-    info = dict(device_info())
+    info = dict(profile.device_info())
     if managed_restart:
         # On restart an already-adopted AP must not present itself as factory-new.
         # Controller uses this together with its persistent device record to
@@ -39,15 +42,15 @@ def build_discovery(
         info["isFactory"] = False
     body = {
         "deviceInfo": info,
-        "deviceMisc": device_misc(),
+        "deviceMisc": profile.device_misc(),
         "controllerSetting": controller_setting(controller_id, destination_id),
     }
     return build_message(
-        mac=config.MAC,
+        mac=settings.mac,
         msg_type=MessageType.DISCOVERY,
         body=body,
-        version=config.ECSP_VERSION,
-        ver_cap=config.ECSP_VER_CAP,
+        version=settings.ecsp_version,
+        ver_cap=settings.ecsp_ver_cap,
         seq=seq,
         dest=destination_id or controller_id or None,
         timestamp=int(time.time() * 1000),
@@ -71,11 +74,11 @@ def log_inbound(
         log.info("RX JSON %s", json.dumps(message, ensure_ascii=False, separators=(",", ":")))
 
 
-def _retry_delay() -> float:
-    return max(0.5, config.RECONNECT_DELAY)
+def _retry_delay(services: ManagedSessionServices) -> float:
+    return max(0.5, services.settings.reconnect_delay)
 
 
-def _run_saved_managed_session(*, dump_tx: bool) -> bool:
+def _run_saved_managed_session(*, dump_tx: bool, services: ManagedSessionServices) -> bool:
     """Reconnect an already-adopted device.
 
     Returns False when several consecutive attempts die before initial sync.
@@ -85,10 +88,10 @@ def _run_saved_managed_session(*, dump_tx: bool) -> bool:
     device image/context without discarding our local non-secret state.
     """
     pre_sync_failures = 0
-    max_failures = max(1, int(config.MANAGED_RECONNECT_ATTEMPTS))
+    max_failures = max(1, int(services.settings.managed_reconnect_attempts))
 
     while True:
-        state = load_state()
+        state = services.state_repository.load()
         if state is None:
             return False
 
@@ -100,6 +103,7 @@ def _run_saved_managed_session(*, dump_tx: bool) -> bool:
         )
         try:
             result = run_v2_adoption(
+                services=services,
                 controller_host=state.controller_host,
                 adopt_port=state.manage_port,
                 controller_id=state.controller_id,
@@ -111,7 +115,7 @@ def _run_saved_managed_session(*, dump_tx: bool) -> bool:
                 pre_sync_failures = 0
                 log.warning(
                     "Managed ECSP session ended after successful sync; reconnecting in %.1fs",
-                    _retry_delay(),
+                    _retry_delay(services),
                 )
             else:
                 pre_sync_failures += 1
@@ -127,7 +131,7 @@ def _run_saved_managed_session(*, dump_tx: bool) -> bool:
             log.error(
                 "Device Account authentication rejected: %s Agent stays alive and will retry in %.1fs.",
                 exc,
-                _retry_delay(),
+                _retry_delay(services),
             )
         except RuntimeError as exc:
             pre_sync_failures += 1
@@ -154,29 +158,30 @@ def _run_saved_managed_session(*, dump_tx: bool) -> bool:
             )
             return False
 
-        time.sleep(_retry_delay())
+        time.sleep(_retry_delay(services))
 
 
-def _try_bootstrap_managed_reconnect(*, dump_tx: bool) -> bool:
+def _try_bootstrap_managed_reconnect(*, dump_tx: bool, services: ManagedSessionServices) -> bool:
     """Upgrade path for devices adopted before local reconnect state existed."""
-    if not config.CONTROLLER_ID:
+    if not services.settings.controller_id:
         return False
 
     log.info(
         "No persisted managed state; trying direct reconnect bootstrap to %s:%d before discovery",
-        config.CONTROLLER_HOST,
-        config.MANAGE_PORT,
+        services.settings.controller_host,
+        services.settings.manage_port,
     )
     for auth_attempt in range(1, 4):
         try:
             result = run_v2_adoption(
-                controller_host=config.CONTROLLER_HOST,
-                adopt_port=config.MANAGE_PORT,
-                controller_id=config.CONTROLLER_ID,
+                services=services,
+                controller_host=services.settings.controller_host,
+                adopt_port=services.settings.manage_port,
+                controller_id=services.settings.controller_id,
                 dump_json=dump_tx,
                 managed_reconnect=True,
             )
-            if load_state() is not None:
+            if services.state_repository.load() is not None:
                 return True
             if result.reached_system_verify:
                 log.warning(
@@ -192,9 +197,9 @@ def _try_bootstrap_managed_reconnect(*, dump_tx: bool) -> bool:
             if auth_attempt < 3:
                 log.info(
                     "Retrying bootstrap authentication in %.1fs without exiting",
-                    _retry_delay(),
+                    _retry_delay(services),
                 )
-                time.sleep(_retry_delay())
+                time.sleep(_retry_delay(services))
             else:
                 log.warning(
                     "Bootstrap credentials were rejected 3 times; falling back to discovery"
@@ -210,6 +215,7 @@ def _try_bootstrap_managed_reconnect(*, dump_tx: bool) -> bool:
 
 def run(
     *,
+    services: ManagedSessionServices,
     once: bool = False,
     dump_tx: bool = False,
     no_adopt: bool = False,
@@ -218,28 +224,28 @@ def run(
     # Once initial sync has completed, only non-secret routing state is stored.
     # Normal restarts therefore skip discovery/adoption and reconnect directly
     # to the V2 manage port like an already-managed EAP.
-    saved_state = load_state()
+    saved_state = services.state_repository.load()
     managed_recovery = False
     if not force_discovery and not no_adopt and not once and saved_state is not None:
-        if _run_saved_managed_session(dump_tx=dump_tx):
+        if _run_saved_managed_session(dump_tx=dump_tx, services=services):
             return
         # The controller closed PRE_CONNECT before it could reply repeatedly.
         # Keep the state file and re-advertise the same adopted MAC/site over
         # UDP so manager-core can reconstruct its device image/context.
         managed_recovery = True
-        saved_state = load_state()
+        saved_state = services.state_repository.load()
 
     # Older agent versions did not persist state. Try the ordinary managed
     # reconnect path once before discovery so an already-adopted AP can upgrade
     # without one final manual Adopt click.
     if not managed_recovery and not force_discovery and not no_adopt and not once:
-        if _try_bootstrap_managed_reconnect(dump_tx=dump_tx):
-            _run_saved_managed_session(dump_tx=dump_tx)
+        if _try_bootstrap_managed_reconnect(dump_tx=dump_tx, services=services):
+            _run_saved_managed_session(dump_tx=dump_tx, services=services)
             return
 
-    target = (config.CONTROLLER_HOST, config.DISCOVERY_PORT)
+    target = (services.settings.controller_host, services.settings.discovery_port)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("0.0.0.0", config.LOCAL_DISCOVERY_PORT))
+    sock.bind(("0.0.0.0", services.settings.local_discovery_port))
     sock.settimeout(0.5)
     local = sock.getsockname()
     log.info("UDP socket bound at %s:%s; controller=%s:%s", local[0], local[1], *target)
@@ -250,21 +256,21 @@ def run(
     next_managed_probe_at = (
         time.monotonic() + 1.5 if managed_recovery else float("inf")
     )
-    controller_id = (saved_state.controller_id if managed_recovery and saved_state else config.CONTROLLER_ID)
+    controller_id = (saved_state.controller_id if managed_recovery and saved_state else services.settings.controller_id)
     destination_id = (
         saved_state.site_id
         if managed_recovery and saved_state and saved_state.site_id
-        else config.SITE_ID or config.DEST_OMADAC_ID or controller_id
+        else services.settings.site_id or services.settings.destination_controller_id or controller_id
     )
     if managed_recovery:
         log.warning(
             "Managed rediscovery active for %s: advertising isFactory=false to %s:%d "
             "and waiting for controller re-link/PRE_ADOPT",
-            saved_state.mac if saved_state else config.MAC,
+            saved_state.mac if saved_state else services.settings.mac,
             target[0],
             target[1],
         )
-    if config.SITE_ID or (managed_recovery and saved_state and saved_state.site_id):
+    if services.settings.site_id or (managed_recovery and saved_state and saved_state.site_id):
         log.info(
             "Site-scoped discovery enabled: siteId=%s controllerId=%s",
             destination_id,
@@ -279,6 +285,8 @@ def run(
                     seq,
                     controller_id,
                     destination_id,
+                    settings=services.settings,
+                    profile=services.device_profile,
                     managed_restart=managed_recovery,
                 )
                 frame = encode_frame(message)
@@ -291,7 +299,7 @@ def run(
                 log.info(
                     "TX DISCOVERY type=1 seq=%d mac=%s bytes=%d -> %s:%d",
                     seq,
-                    normalize_mac(config.MAC),
+                    normalize_mac(services.settings.mac),
                     len(frame),
                     target[0],
                     target[1],
@@ -299,7 +307,7 @@ def run(
                 if dump_tx:
                     log.info("TX JSON %s", frame[4:].decode("utf-8"))
                 seq = 1 if seq >= 0x7FFFFFFF else seq + 1
-                next_send = now + config.DISCOVERY_INTERVAL
+                next_send = now + services.settings.discovery_interval
                 deadline = time.monotonic() + 2.0 if once else None
 
             try:
@@ -315,13 +323,14 @@ def run(
                     # Only probe occasionally. The UDP rediscovery itself is the
                     # repair mechanism; repeated rapid TCP attempts just recreate
                     # the "adopt info is null" loop seen in server.log.
-                    next_managed_probe_at = time.monotonic() + max(10.0, config.DISCOVERY_INTERVAL * 2)
+                    next_managed_probe_at = time.monotonic() + max(10.0, services.settings.discovery_interval * 2)
                     try:
                         log.info(
                             "Managed rediscovery probe: retrying TCP/%d after refreshing UDP discovery state",
                             saved_state.manage_port,
                         )
                         result = run_v2_adoption(
+                services=services,
                             controller_host=saved_state.controller_host,
                             adopt_port=saved_state.manage_port,
                             controller_id=saved_state.controller_id,
@@ -330,7 +339,7 @@ def run(
                             known_config_version=saved_state.config_version,
                         )
                         if result.reached_system_verify:
-                            _run_saved_managed_session(dump_tx=dump_tx)
+                            _run_saved_managed_session(dump_tx=dump_tx, services=services)
                             return
                     except AuthenticationRejected as exc:
                         log.error(
@@ -366,7 +375,7 @@ def run(
             if msg_type != int(MessageType.PRE_ADOPT_REQUEST):
                 continue
 
-            adopt_port = int(body.get("adoptPort") or config.MANAGE_PORT)
+            adopt_port = int(body.get("adoptPort") or services.settings.manage_port)
             log.warning(
                 "PRE_ADOPT_REQUEST received: adoptPort=%d controllerId=%r. Discovery stage is proven.",
                 adopt_port,
@@ -386,7 +395,8 @@ def run(
             # the same process/NAT mapping after the credentials are corrected.
             try:
                 run_v2_adoption(
-                    controller_host=config.CONTROLLER_HOST,
+                    services=services,
+                    controller_host=services.settings.controller_host,
                     adopt_port=adopt_port,
                     controller_id=controller_id,
                     dump_json=dump_tx,
@@ -409,10 +419,10 @@ def run(
             # run_v2_adoption normally remains here for the lifetime of the
             # manage connection. If it returns after successful sync, state now
             # exists and subsequent connections can bypass manual adoption.
-            if load_state() is not None:
+            if services.state_repository.load() is not None:
                 break
             next_send = 0.0
     finally:
         sock.close()
 
-    _run_saved_managed_session(dump_tx=dump_tx)
+    _run_saved_managed_session(dump_tx=dump_tx, services=services)

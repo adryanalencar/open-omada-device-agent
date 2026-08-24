@@ -1,8 +1,8 @@
 import json
 from dataclasses import dataclass
 
-import open_omada_device_agent.adoption as adoption
 from open_omada_device_agent.domain import RadioBand, WirelessClientState
+from open_omada_device_agent.contexts.clients.domain import ClientRadioBand
 from open_omada_device_agent.openwrt import CommandResult
 from open_omada_device_agent.platform_capabilities import PlatformCapabilities
 from open_omada_device_agent.telemetry import (
@@ -153,7 +153,7 @@ def test_maps_hostapd_clients_to_wireless_client_state():
     assert len(clients) == 1
     assert clients[0].mac == "aa:bb:cc:dd:ee:ff"
     assert clients[0].ssid == "guest"
-    assert clients[0].radio is RadioBand.TWO_G
+    assert clients[0].radio is ClientRadioBand.TWO_G
     assert clients[0].rssi == -61
     assert clients[0].snr == 35
     assert clients[0].rx_bytes == 1200
@@ -198,42 +198,40 @@ def test_openwrt_wireless_telemetry_ignores_invalid_json():
     assert OpenWrtWirelessTelemetry(runner).collect() == {}
 
 
-def test_inform_body_includes_wireless_telemetry_when_available(monkeypatch):
-    monkeypatch.setattr(
-        adoption,
-        "collect_openwrt_wireless_inform",
-        lambda: {"wSettings_2G": {"ch": "11"}},
+def test_inform_projection_includes_wireless_telemetry():
+    from open_omada_device_agent.projections.inform import InformAssembler, LanObservation
+    assembler = InformAssembler(
+        device_info=lambda: {"model": "test"},
+        lan=LanObservation(100.0, 1, "LAN"),
+        clients=lambda: (),
+        client_projection=lambda clients: [],
+        wireless_projection=lambda: {"wSettings_2G": {"ch": "11"}},
     )
-    monkeypatch.setattr(adoption, "collect_openwrt_wireless_clients", lambda: ())
-
-    body = adoption._inform_body(need_reply=False, started_at=0)
-
+    body = assembler.build(need_reply=False, uptime=0)
     assert body["wSettings_2G"] == {"ch": "11"}
 
 
-def test_inform_body_merges_dhcp_and_hostapd_clients(monkeypatch, tmp_path):
+def test_inform_projection_accepts_merged_dhcp_and_hostapd_clients(tmp_path):
+    from open_omada_device_agent.client_tracking import client_stats_payload, clients_from_dhcp_leases, load_dnsmasq_leases, merge_wireless_client_states
+    from open_omada_device_agent.projections.inform import InformAssembler, LanObservation
     lease_file = tmp_path / "leases"
     lease_file.write_text("1000 aa:bb:cc:dd:ee:ff 192.0.2.10 phone *\n", encoding="utf-8")
-    monkeypatch.setattr(adoption.config, "DHCP_LEASE_FILE", str(lease_file))
-    monkeypatch.setattr(adoption, "collect_openwrt_wireless_inform", lambda: {})
-    monkeypatch.setattr(
-        adoption,
-        "collect_openwrt_wireless_clients",
-        lambda: (
-            WirelessClientState(
-                mac="aa:bb:cc:dd:ee:ff",
-                ssid="guest",
-                radio=RadioBand.TWO_G,
-                rssi=-59,
-            ),
-        ),
+    clients = merge_wireless_client_states(
+        clients_from_dhcp_leases(load_dnsmasq_leases(str(lease_file))),
+        (WirelessClientState(mac="aa:bb:cc:dd:ee:ff", ssid="guest", radio=ClientRadioBand.TWO_G, rssi=-59),),
     )
-
-    body = adoption._inform_body(need_reply=False, started_at=0)
-
-    assert body["clients"][0]["mac"] == "aa:bb:cc:dd:ee:ff"
-    assert body["clients"][0]["ip"] == "192.0.2.10"
-    assert body["clients"][0]["name"] == "phone"
-    assert body["clients"][0]["ssid"] == "guest"
-    assert body["clients"][0]["rid"] == 0
-    assert body["clients"][0]["rssi"] == -59
+    assembler = InformAssembler(
+        device_info=lambda: {"model": "test"},
+        lan=LanObservation(100.0, 1, "LAN"),
+        clients=lambda: clients,
+        client_projection=client_stats_payload,
+        wireless_projection=lambda: {},
+    )
+    body = assembler.build(need_reply=False, uptime=0)
+    client = body["clients"][0]
+    assert client["mac"] == "aa:bb:cc:dd:ee:ff"
+    assert client["ip"] == "192.0.2.10"
+    assert client["name"] == "phone"
+    assert client["ssid"] == "guest"
+    assert client["rid"] == 0
+    assert client["rssi"] == -59

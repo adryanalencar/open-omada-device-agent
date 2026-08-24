@@ -4,8 +4,8 @@ from __future__ import annotations
 import argparse
 import logging
 
-from . import __version__, config, discovery
-from .session_state import clear_state
+from . import __version__, discovery
+from .bootstrap import AgentSettings, build_runtime
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,19 +47,22 @@ def main() -> None:
     log = logging.getLogger("open_omada.cli")
 
     try:
-        config.validate_runtime_config()
+        settings = AgentSettings.from_environment()
+        settings.validate()
+        runtime = build_runtime(settings)
     except RuntimeError as exc:
         log.error("configuration error: %s", exc)
         raise SystemExit(2) from exc
 
     if args.clear_state:
-        if clear_state():
+        if runtime.state_repository.clear():
             log.warning("Cleared local managed reconnect state; forcing discovery/adoption")
         else:
             log.info("No local managed reconnect state existed; forcing discovery/adoption")
 
     try:
         discovery.run(
+            services=runtime,
             once=args.once,
             dump_tx=args.dump_tx,
             no_adopt=args.no_adopt,

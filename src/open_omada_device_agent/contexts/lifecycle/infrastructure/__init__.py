@@ -1,0 +1,1 @@
+"""Lifecycle infrastructure adapters."""
