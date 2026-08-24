@@ -11,8 +11,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import config
+from .ap_config import parse_set_request
 from .capabilities import ap_components_v2
+from .client_tracking import (
+    client_stats_payload,
+    clients_from_dhcp_leases,
+    load_dnsmasq_leases,
+    merge_wireless_client_states,
+)
 from .crypto import calculate_md5_mode_auth
+from .device_commands import OpenWrtClientControlAdapter, SysfsLedAdapter
+from .domain import AccessPointConfigUpdate
 from .ecsp import (
     CipherType,
     MessageType,
@@ -22,9 +31,15 @@ from .ecsp import (
     send_tcp_message,
 )
 from .identity import controller_setting, device_info, device_misc
-from .session_state import save_state
+from .openwrt import OpenWrtUciAdapter
+from .platform_capabilities import capability_summary, detect_platform_capabilities
+from .portal_runtime import OpenWrtPortalRuntime
+from .session_state import clear_state, save_state
+from .telemetry import collect_openwrt_wireless_clients, collect_openwrt_wireless_inform
 
 log = logging.getLogger("open_omada.adoption")
+CONFIG_OK = 0
+CONFIG_ERROR = 1
 
 
 class AuthenticationRejected(RuntimeError):
@@ -144,7 +159,7 @@ def _inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
     info = dict(device_info())
     info["isFactory"] = False
     info["upTime"] = str(max(0, int(time.monotonic() - started_at)))
-    return {
+    body = {
         "needReply": 1 if need_reply else 0,
         "deviceInfo": info,
         # Wired APs are expected to report lanInfo.  Without it Controller 6.2
@@ -157,10 +172,21 @@ def _inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
             "port": config.LAN_PORT,
         },
     }
+    clients = merge_wireless_client_states(
+        clients_from_dhcp_leases(load_dnsmasq_leases(config.DHCP_LEASE_FILE)),
+        collect_openwrt_wireless_clients(),
+    )
+    if clients:
+        body["clients"] = client_stats_payload(clients)
+    body.update(collect_openwrt_wireless_inform())
+    return body
 
 
 def _set_response_body(
-    request: dict[str, Any], *, current_config_version: int | None = None
+    request: dict[str, Any],
+    *,
+    current_config_version: int | None = None,
+    errcode: int = CONFIG_OK,
 ) -> dict[str, Any]:
     """Build the ECSP V2 BaseConfigResponse for a SET_REQUEST.
 
@@ -204,11 +230,167 @@ def _set_response_body(
             "SET_REQUEST has neither configVersion nor configVersionInc"
         )
 
+    response_version = (
+        int(current_config_version)
+        if errcode != CONFIG_OK and current_config_version is not None
+        else applied_version
+    )
+
     return {
         "sequenceId": int(sequence_id),
-        "errcode": 0,
-        "configVersion": applied_version,
+        "errcode": int(errcode),
+        "configVersion": response_version,
     }
+
+
+def _get_response_body(request: dict[str, Any], *, errcode: int = CONFIG_ERROR) -> dict[str, Any]:
+    body = request.get("body") or {}
+    if not isinstance(body, dict):
+        raise RuntimeError("GET_REQUEST body is not an object")
+    sequence_id = body.get("sequenceId")
+    if sequence_id is None:
+        raise RuntimeError("GET_REQUEST is missing sequenceId")
+    request_keys = tuple(sorted(key for key in body if key != "sequenceId"))
+    response: dict[str, Any] = {
+        "sequenceId": int(sequence_id),
+        "errcode": int(errcode),
+    }
+    if request_keys:
+        response["unsupportedKeys"] = list(request_keys)
+    return response
+
+
+def _notify_reply_body(
+    request: dict[str, Any],
+    *,
+    errcode: int = CONFIG_ERROR,
+    result: object | None = None,
+) -> dict[str, Any]:
+    body = request.get("body") or {}
+    if not isinstance(body, dict):
+        raise RuntimeError("NOTIFY_REQUEST body is not an object")
+    reply: dict[str, Any] = {"err": int(errcode)}
+    if body.get("nid") is not None:
+        reply["nid"] = int(body["nid"])
+    if body.get("sub") is not None:
+        reply["sub"] = int(body["sub"])
+    if result is not None:
+        reply["rst"] = result
+    elif errcode != CONFIG_OK:
+        reply["rst"] = {"error": "unsupported notify request"}
+    return reply
+
+
+def _describe_config_update(update: AccessPointConfigUpdate) -> str:
+    parts = [
+        f"sequenceId={update.sequence_id}",
+        f"configVersion={update.config_version}",
+        f"configVersionInc={update.config_version_inc}",
+    ]
+    if update.radios:
+        bands = ",".join(sorted(radio.band.value for radio in update.radios))
+        parts.append(f"radios={len(update.radios)}[{bands}]")
+    if update.wlans:
+        bands = ",".join(sorted(wlan.band.value for wlan in update.wlans))
+        parts.append(f"wlans={len(update.wlans)}[{bands}]")
+    if update.management_vlan is not None:
+        parts.append(
+            "managementVlan="
+            f"{'on' if update.management_vlan.enabled else 'off'}:"
+            f"{update.management_vlan.vlan_id}"
+        )
+    if update.led is not None:
+        parts.append(
+            "led="
+            f"enable:{update.led.enabled if update.led.enabled is not None else 'unset'},"
+            f"locate:{update.led.locate if update.led.locate is not None else 'unset'}"
+        )
+    if update.wifi_control_led is not None:
+        parts.append("wifiControlLed=present")
+    if update.portal_free_policy is not None:
+        parts.append(
+            "portalFreePolicy="
+            f"l2:{len(update.portal_free_policy.layer2_rules)},"
+            f"url:{len(update.portal_free_policy.url_rules)}"
+        )
+    if update.client_configs:
+        parts.append(f"clientConfig={len(update.client_configs)}")
+    if update.client_operations:
+        ops = ",".join(
+            "unknown" if operation.operation is None else str(operation.operation)
+            for operation in update.client_operations
+        )
+        parts.append(f"clientOperation={len(update.client_operations)}[{ops}]")
+    if update.client_rate_config is not None:
+        parts.append(
+            "clientRateConfig="
+            f"action:{update.client_rate_config.action},"
+            f"limits:{len(update.client_rate_config.limits)}"
+        )
+    if update.unhandled_keys:
+        parts.append(f"unhandled={','.join(update.unhandled_keys)}")
+    return " ".join(parts)
+
+
+def _apply_config_update(update: AccessPointConfigUpdate) -> int:
+    if update.unhandled_keys:
+        log.error("Unsupported AP SET_REQUEST keys: %s", ",".join(update.unhandled_keys))
+        return CONFIG_ERROR
+
+    has_platform_config = (
+        update.radios
+        or update.wlans
+        or update.management_vlan is not None
+        or update.portal_free_policy is not None
+    )
+    has_device_commands = (
+        update.led is not None
+        or update.wifi_control_led is not None
+        or bool(update.client_configs)
+        or bool(update.client_operations)
+        or update.client_rate_config is not None
+    )
+    if not (has_platform_config or has_device_commands):
+        return CONFIG_OK
+
+    capabilities = detect_platform_capabilities()
+    log.info("Detected AP platform capabilities: %s", capability_summary(capabilities))
+    if has_platform_config:
+        result = OpenWrtUciAdapter().reconcile(update, capabilities)
+        if not result.applied:
+            log.error("AP platform config reconciliation failed: %s", result.error)
+            return CONFIG_ERROR
+        if result.changed:
+            log.info(
+                "Applied AP platform config through OpenWrt UCI: commands=%d",
+                result.command_count,
+            )
+        else:
+            log.info("AP platform config required no local UCI changes")
+
+        result = OpenWrtPortalRuntime().reconcile(update, capabilities)
+        if not result.applied:
+            log.error("AP portal runtime reconciliation failed: %s", result.error)
+            return CONFIG_ERROR
+        if result.changed:
+            log.info("Applied AP portal enforcement through local nftables adapter")
+
+    if has_device_commands:
+        result = SysfsLedAdapter().reconcile(update, capabilities)
+        if not result.applied:
+            log.error("AP device command reconciliation failed: %s", result.error)
+            return CONFIG_ERROR
+        if result.changed:
+            log.info("Applied AP device command through local platform adapter")
+
+        result = OpenWrtClientControlAdapter().reconcile(update, capabilities)
+        if not result.applied:
+            log.error("AP client control reconciliation failed: %s", result.error)
+            return CONFIG_ERROR
+        if result.changed:
+            log.info("Applied AP client control through local platform adapter")
+
+    return CONFIG_OK
 
 
 def _send_set_response(
@@ -218,11 +400,19 @@ def _send_set_response(
     controller_id: str,
     current_config_version: int | None,
     dump_json: bool,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Acknowledge a controller SET_REQUEST and return version/sequence."""
     request_header = request.get("header") or {}
+    errcode = CONFIG_OK
+    try:
+        update = parse_set_request(request)
+        log.info("Parsed AP SET_REQUEST domains: %s", _describe_config_update(update))
+        errcode = _apply_config_update(update)
+    except ValueError as exc:
+        errcode = CONFIG_ERROR
+        log.warning("Could not parse AP config domains in SET_REQUEST: %s", exc)
     response_body = _set_response_body(
-        request, current_config_version=current_config_version
+        request, current_config_version=current_config_version, errcode=errcode
     )
     response = build_message(
         mac=config.MAC,
@@ -239,7 +429,11 @@ def _send_set_response(
     )
     send_tcp_message(sock, response)
     _log_message("TX/TCP", response, dump_json=dump_json)
-    return int(response_body["configVersion"]), int(response_body["sequenceId"])
+    return (
+        int(response_body["configVersion"]),
+        int(response_body["sequenceId"]),
+        int(response_body["errcode"]),
+    )
 
 
 def _send_inform(
@@ -263,6 +457,100 @@ def _send_inform(
     )
     send_tcp_message(sock, inform)
     _log_message("TX/TCP", inform, dump_json=dump_json)
+
+
+def _send_get_response(
+    sock: socket.socket,
+    request: dict[str, Any],
+    *,
+    controller_id: str,
+    dump_json: bool,
+) -> tuple[int, int]:
+    request_header = request.get("header") or {}
+    response_body = _get_response_body(request, errcode=CONFIG_ERROR)
+    response = build_message(
+        mac=config.MAC,
+        msg_type=MessageType.GET_RESPONSE,
+        body=response_body,
+        version=config.ECSP_VERSION,
+        ver_cap=config.ECSP_VER_CAP,
+        seq=request_header.get("seq"),
+        dest=controller_id,
+        timestamp=int(time.time() * 1000),
+        error=0,
+    )
+    send_tcp_message(sock, response)
+    _log_message("TX/TCP", response, dump_json=dump_json)
+    return int(response_body["sequenceId"]), int(response_body["errcode"])
+
+
+def _send_notify_reply(
+    sock: socket.socket,
+    request: dict[str, Any],
+    *,
+    controller_id: str,
+    dump_json: bool,
+) -> bool:
+    request_header = request.get("header") or {}
+    body = request.get("body") or {}
+    if isinstance(body, dict) and int(body.get("nre") or 0) == 1:
+        log.info(
+            "Controller NOTIFY_REQUEST has nre=1; no reply will be sent for subject=%r notifyId=%r",
+            body.get("sub"),
+            body.get("nid"),
+        )
+        return False
+    request_type = int(request_header.get("type", -1))
+    response_type = (
+        MessageType.NOTIFY_REPLY_V2
+        if request_type == int(MessageType.NOTIFY_REQUEST_V2)
+        else MessageType.NOTIFY_REPLY
+    )
+    response = build_message(
+        mac=config.MAC,
+        msg_type=response_type,
+        body=_notify_reply_body(request, errcode=CONFIG_ERROR),
+        version=config.ECSP_VERSION,
+        ver_cap=config.ECSP_VER_CAP,
+        seq=request_header.get("seq"),
+        dest=controller_id,
+        timestamp=int(time.time() * 1000),
+        error=0,
+    )
+    send_tcp_message(sock, response)
+    _log_message("TX/TCP", response, dump_json=dump_json)
+    return True
+
+
+def _send_forget_response(
+    sock: socket.socket,
+    request: dict[str, Any],
+    *,
+    controller_id: str,
+    dump_json: bool,
+) -> MessageType:
+    request_type = int((request.get("header") or {}).get("type", -1))
+    if request_type == int(MessageType.FORGET_REQUEST_NO_RESET):
+        response_type = MessageType.FORGET_RESPONSE_NO_RESET
+    elif request_type == int(MessageType.FORGET_REQUEST):
+        response_type = MessageType.FORGET_RESPONSE
+    else:
+        raise RuntimeError(f"cannot build forget response for message type {request_type}")
+
+    response = build_message(
+        mac=config.MAC,
+        msg_type=response_type,
+        body={},
+        version=config.ECSP_VERSION,
+        ver_cap=config.ECSP_VER_CAP,
+        seq=None,
+        dest=controller_id,
+        timestamp=int(time.time() * 1000),
+        error=0,
+    )
+    send_tcp_message(sock, response)
+    _log_message("TX/TCP", response, dump_json=dump_json)
+    return response_type
 
 
 def run_v2_adoption(
@@ -539,8 +827,9 @@ def run_v2_adoption(
         next_inform_at = time.monotonic() + max(0.5, config.INFORM_INTERVAL)
 
         # The next phase is the managed-device protocol (SET/GET/INFORM/NOTIFY).
-        # SET_RESPONSE is now grounded in the controller's BaseConfigResponse
-        # schema. GET/NOTIFY remain capture-only until we observe concrete bodies.
+        # SET_RESPONSE is grounded in the controller's BaseConfigResponse
+        # schema. GET/NOTIFY handlers preserve request correlation and return
+        # explicit unsupported responses until payload-specific bodies are known.
         sock.settimeout(0.5)
         while True:
             now = time.monotonic()
@@ -565,13 +854,20 @@ def run_v2_adoption(
             header = message.get("header") or {}
             msg_type = int(header.get("type", -1))
             if msg_type == int(MessageType.SET_REQUEST):
-                applied_config_version, applied_sequence_id = _send_set_response(
+                applied_config_version, applied_sequence_id, set_errcode = _send_set_response(
                     sock,
                     message,
                     controller_id=controller_id,
                     current_config_version=config_version,
                     dump_json=dump_json,
                 )
+                if set_errcode != CONFIG_OK:
+                    log.error(
+                        "Controller SET_REQUEST failed locally: errcode=%d sequenceId=%d",
+                        set_errcode,
+                        applied_sequence_id,
+                    )
+                    continue
                 config_version = applied_config_version
                 sequence_id = applied_sequence_id
                 save_state(
@@ -587,6 +883,48 @@ def run_v2_adoption(
                     applied_config_version,
                     applied_sequence_id,
                 )
+            elif msg_type == int(MessageType.GET_REQUEST):
+                get_sequence_id, get_errcode = _send_get_response(
+                    sock,
+                    message,
+                    controller_id=controller_id,
+                    dump_json=dump_json,
+                )
+                log.error(
+                    "Controller GET_REQUEST key is unsupported locally: errcode=%d sequenceId=%d",
+                    get_errcode,
+                    get_sequence_id,
+                )
+            elif msg_type in {
+                int(MessageType.NOTIFY_REQUEST),
+                int(MessageType.NOTIFY_REQUEST_V2),
+            }:
+                replied = _send_notify_reply(
+                    sock,
+                    message,
+                    controller_id=controller_id,
+                    dump_json=dump_json,
+                )
+                if replied:
+                    log.error("Controller NOTIFY_REQUEST subject is unsupported locally")
+            elif msg_type in {
+                int(MessageType.FORGET_REQUEST),
+                int(MessageType.FORGET_REQUEST_NO_RESET),
+            }:
+                response_type = _send_forget_response(
+                    sock,
+                    message,
+                    controller_id=controller_id,
+                    dump_json=dump_json,
+                )
+                cleared = clear_state()
+                log.warning(
+                    "Controller sent %s; replied with %s, cleared managed state=%s and ending session",
+                    message_type_name(msg_type),
+                    response_type.name,
+                    cleared,
+                )
+                return AdoptionResult(managed_ready, controller_id, username)
 
     except (EOFError, ConnectionError, OSError) as exc:
         log.warning("ECSP TCP session ended: %s", exc)

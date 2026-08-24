@@ -20,6 +20,11 @@ flowchart TD
     ADOPT --> CAP[capabilities.py]
     ADOPT --> ID
     ADOPT --> STATE
+    ADOPT --> APCFG[ap_config.py]
+    ADOPT --> OWRT[openwrt.py]
+    ADOPT --> CMD[device_commands.py]
+    ADOPT --> TEL[telemetry.py]
+    ADOPT --> CLIENTS[client_tracking.py]
     ID --> NET[network_tools.py]
     ID --> SYS[system_tools.py]
     CLI --> CFG[config.py]
@@ -87,6 +92,21 @@ continuity. It is intentionally separate from credentials.
 
 Contains the validated legacy ECSP V2 authentication calculations. It should
 remain protocol-focused and side-effect free.
+
+### AP management modules
+
+- `ap_config.py` parses AP `SET_REQUEST` bodies into domain models without
+  applying them.
+- `openwrt.py` reconciles supported radio/SSID/VLAN domains through UCI.
+- `device_commands.py` handles local command-like keys such as configured
+  sysfs LED brightness writes.
+- `client_tracking.py` maps observed dnsmasq leases to Omada `clients` inform
+  entries.
+- `telemetry.py` maps OpenWrt `ubus network.wireless status` to conservative
+  `wSettings_*` and `ssidStats_*` inform keys.
+- `portal.py`, `portal_enforcement.py`, and `radius.py` provide captive portal
+  session, nftables, and RADIUS primitives. Portal SSID provisioning remains
+  deliberately rejected until these pieces are wired end to end.
 
 ## Runtime data flow
 

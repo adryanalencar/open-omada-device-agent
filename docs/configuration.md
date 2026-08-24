@@ -85,6 +85,63 @@ OMADA_TLS_CA_FILE=/etc/open-omada/controller-ca.pem
 | `OMADA_LAN_DUPLEX` | `1` | Duplex value used by the reference profile |
 | `OMADA_LAN_PORT` | `LAN` | Uplink port label |
 
+## AP platform features
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OMADA_PLATFORM` | `auto` | `auto`, `openwrt`, or `generic` capability detection |
+| `OMADA_RADIO_BANDS` | `2g` | Comma-separated supported AP bands: `2g,5g,5g2,6g` |
+| `OMADA_MAX_SSIDS` | `4` | Maximum SSIDs the platform adapter will accept |
+| `OMADA_CAP_WLAN` | auto on OpenWrt with `uci` | Enable WLAN/radio UCI reconciliation |
+| `OMADA_CAP_WPA2_PSK` | auto on OpenWrt with `uci` | Accept WPA2-PSK WLANs |
+| `OMADA_CAP_WPA3_PSK` | `false` | Accept WPA3-PSK WLANs |
+| `OMADA_CAP_SSID_VLAN` | `false` | Accept SSID VLAN mapping |
+| `OMADA_CAP_DYNAMIC_VLAN` | `false` | Accept dynamic VLAN requests |
+| `OMADA_CAP_MANAGEMENT_VLAN` | `false` | Accept management VLAN requests |
+| `OMADA_CAP_PORTAL` | `false` | Enable portal WLAN acceptance and nftables captive enforcement |
+| `OMADA_CAP_DHCP_TRACKING` | auto on OpenWrt with `ubus` | Include observed DHCP lease clients |
+| `OMADA_CAP_OPTION82` | `false` | Accept DHCP Option 82 WLAN settings |
+| `OMADA_CAP_LED` | path-based | Enable sysfs LED brightness/trigger writes |
+| `OMADA_CAP_CLIENT_OPERATIONS` | auto on OpenWrt with `ubus` | Enable supported client control commands |
+| `OMADA_CAP_CLIENT_RATE_LIMITS` | `false` | Enable nftables client rate-limit enforcement |
+
+## OpenWrt targets
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OMADA_MANAGEMENT_VLAN_INTERFACE` | empty | UCI network interface to update for management VLAN |
+| `OMADA_MANAGEMENT_VLAN_DEVICE` | empty | Base OpenWrt device, for example `br-lan` |
+| `OMADA_HOSTAPD_UBUS_IFACE` | empty | hostapd ubus object suffix for reconnect/deauth, for example `wlan0` |
+| `OMADA_CLIENT_BLOCK_INTERFACE` | empty | Bridge/interface used by nftables client block rules |
+| `OMADA_CLIENT_RATE_LIMIT_INTERFACE` | empty | Bridge/interface used by nftables per-client rate-limit rules |
+| `OMADA_PORTAL_INTERFACE` | empty | Portal WLAN interface for captive nftables policy |
+| `OMADA_PORTAL_REDIRECT_PORT` | `8080` | Local HTTP port used as captive redirect target |
+
+Unsupported controller keys are intentionally rejected with a local
+`SET_RESPONSE.errcode=1`.
+
+## DHCP/client tracking
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OMADA_DHCP_LEASE_FILE` | `/tmp/dhcp.leases` | dnsmasq lease file used to report real IP/hostname client data |
+
+If the lease file is absent, client entries are omitted.
+
+## LED control
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OMADA_LED_BRIGHTNESS_PATH` | empty | sysfs brightness file for `led.enable` |
+| `OMADA_LED_ON_VALUE` | `1` | Value written when Controller enables the LED |
+| `OMADA_LED_OFF_VALUE` | `0` | Value written when Controller disables the LED |
+| `OMADA_LED_TRIGGER_PATH` | empty | sysfs trigger file for `led.locate` |
+| `OMADA_LED_LOCATE_TRIGGER` | `timer` | Trigger value while locate is active |
+| `OMADA_LED_DEFAULT_TRIGGER` | `none` | Trigger value restored when locate stops |
+
+`wifiControlLed` is parsed but rejected because it represents hardware button
+semantics, not the LED brightness/locate state itself.
+
 ## State file
 
 The default state file is derived from the device MAC:

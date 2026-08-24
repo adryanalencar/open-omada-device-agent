@@ -62,6 +62,37 @@ LAN_RATE = _float("OMADA_LAN_RATE", 100.0)
 LAN_DUPLEX = _int("OMADA_LAN_DUPLEX", 1)
 LAN_PORT = os.getenv("OMADA_LAN_PORT", "LAN")
 
+# Client tracking. In AP mode this is an observation source, not an assertion
+# that the AP is the DHCP server. If the file does not exist, informs simply
+# omit client entries.
+DHCP_LEASE_FILE = os.getenv("OMADA_DHCP_LEASE_FILE", "/tmp/dhcp.leases").strip()
+
+# Optional Linux/OpenWrt sysfs LED control. Leave unset unless the operator has
+# mapped a real AP status LED brightness file.
+LED_BRIGHTNESS_PATH = os.getenv("OMADA_LED_BRIGHTNESS_PATH", "").strip()
+LED_ON_VALUE = os.getenv("OMADA_LED_ON_VALUE", "1")
+LED_OFF_VALUE = os.getenv("OMADA_LED_OFF_VALUE", "0")
+LED_TRIGGER_PATH = os.getenv("OMADA_LED_TRIGGER_PATH", "").strip()
+LED_LOCATE_TRIGGER = os.getenv("OMADA_LED_LOCATE_TRIGGER", "timer")
+LED_DEFAULT_TRIGGER = os.getenv("OMADA_LED_DEFAULT_TRIGGER", "none")
+
+# Optional client operations. Reconnect/deauth uses OpenWrt hostapd ubus
+# objects, while block/unblock uses an nftables bridge table to drop traffic
+# from the client MAC after association.
+HOSTAPD_UBUS_IFACE = os.getenv("OMADA_HOSTAPD_UBUS_IFACE", "").strip()
+CLIENT_BLOCK_INTERFACE = os.getenv("OMADA_CLIENT_BLOCK_INTERFACE", "").strip()
+CLIENT_RATE_LIMIT_INTERFACE = os.getenv("OMADA_CLIENT_RATE_LIMIT_INTERFACE", "").strip()
+
+# Optional captive-portal enforcement. The agent only enforces traffic policy
+# and HTTP redirect; a local portal web application must listen on this port.
+PORTAL_INTERFACE = os.getenv("OMADA_PORTAL_INTERFACE", "").strip()
+PORTAL_REDIRECT_PORT = _int("OMADA_PORTAL_REDIRECT_PORT", 8080)
+
+# Optional management VLAN reconciliation. These must be explicit because the
+# wrong OpenWrt network target can move the AP out of reach.
+MANAGEMENT_VLAN_INTERFACE = os.getenv("OMADA_MANAGEMENT_VLAN_INTERFACE", "").strip()
+MANAGEMENT_VLAN_DEVICE = os.getenv("OMADA_MANAGEMENT_VLAN_DEVICE", "").strip()
+
 # ECSP V2 framing/protocol identity.
 ECSP_VERSION = os.getenv("OMADA_ECSP_VERSION", "2.3.0")
 ECSP_VER_CAP = _int("OMADA_ECSP_VER_CAP", 2)
