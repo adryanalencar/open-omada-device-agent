@@ -28,6 +28,7 @@ from .identity import controller_setting, device_info, device_misc
 from .openwrt import OpenWrtUciAdapter
 from .platform_capabilities import capability_summary, detect_platform_capabilities
 from .session_state import save_state
+from .telemetry import collect_openwrt_wireless_inform
 
 log = logging.getLogger("open_omada.adoption")
 CONFIG_OK = 0
@@ -167,6 +168,7 @@ def _inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
     clients = clients_from_dhcp_leases(load_dnsmasq_leases(config.DHCP_LEASE_FILE))
     if clients:
         body["clients"] = client_stats_payload(clients)
+    body.update(collect_openwrt_wireless_inform())
     return body
 
 
