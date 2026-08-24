@@ -140,6 +140,8 @@ def validate_update(
         and not capabilities.supports_management_vlan
     ):
         errors.append("management VLAN requested but platform capability is disabled")
+    if update.portal_free_policy is not None:
+        errors.append("portal free policy reconciliation is not implemented")
     return tuple(dict.fromkeys(errors))
 
 
@@ -148,6 +150,17 @@ def build_uci_batch(
     capabilities: PlatformCapabilities,
 ) -> tuple[str, ...]:
     lines: list[str] = []
+    vlan_ids = sorted(
+        {
+            wlan.vlan.vlan_id
+            for wlan in update.wlans
+            if wlan.vlan.vlan_id is not None and capabilities.supports_ssid_vlan
+        }
+    )
+    for vlan_id in vlan_ids:
+        lines.extend(_ssid_vlan_lines(vlan_id))
+    if vlan_ids:
+        lines.append("commit network")
     for radio in update.radios:
         lines.extend(_radio_lines(radio))
     for wlan in update.wlans:
@@ -199,6 +212,16 @@ def _wlan_lines(wlan: WirelessNetwork, capabilities: PlatformCapabilities) -> tu
     else:
         lines.append(_set("wireless", section, "encryption", "none"))
     return tuple(lines)
+
+
+def _ssid_vlan_lines(vlan_id: int) -> tuple[str, ...]:
+    section = f"openomada_vlan{vlan_id}"
+    return (
+        f"delete network.{section}",
+        f"set network.{section}=interface",
+        _set("network", section, "proto", "none"),
+        _set("network", section, "device", f"br-lan.{vlan_id}"),
+    )
 
 
 def _radio_section(band: RadioBand, radio_id: int | None) -> str:

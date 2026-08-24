@@ -1,6 +1,7 @@
 import time
 
 from open_omada_device_agent.adoption import (
+    CONFIG_ERROR,
     _describe_config_update,
     _device_negotiation_body,
     _inform_body,
@@ -86,6 +87,25 @@ def test_set_response_uses_request_body_sequence_and_config_version():
         "sequenceId": 2,
         "errcode": 0,
         "configVersion": 1,
+    }
+
+
+def test_set_response_can_report_local_config_failure_without_advancing_version():
+    request = {
+        "header": {"seq": 88, "type": 4096},
+        "body": {
+            "sequenceId": 14,
+            "configVersionInc": 1,
+            "ssid_2G": {"ssid": [{"ssidName": "unsupported"}]},
+        },
+    }
+
+    assert _set_response_body(
+        request, current_config_version=2, errcode=CONFIG_ERROR
+    ) == {
+        "sequenceId": 14,
+        "errcode": 1,
+        "configVersion": 2,
     }
 
 

@@ -24,9 +24,13 @@ from .ecsp import (
     send_tcp_message,
 )
 from .identity import controller_setting, device_info, device_misc
+from .openwrt import OpenWrtUciAdapter
+from .platform_capabilities import capability_summary, detect_platform_capabilities
 from .session_state import save_state
 
 log = logging.getLogger("open_omada.adoption")
+CONFIG_OK = 0
+CONFIG_ERROR = 1
 
 
 class AuthenticationRejected(RuntimeError):
@@ -162,7 +166,10 @@ def _inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
 
 
 def _set_response_body(
-    request: dict[str, Any], *, current_config_version: int | None = None
+    request: dict[str, Any],
+    *,
+    current_config_version: int | None = None,
+    errcode: int = CONFIG_OK,
 ) -> dict[str, Any]:
     """Build the ECSP V2 BaseConfigResponse for a SET_REQUEST.
 
@@ -206,10 +213,16 @@ def _set_response_body(
             "SET_REQUEST has neither configVersion nor configVersionInc"
         )
 
+    response_version = (
+        int(current_config_version)
+        if errcode != CONFIG_OK and current_config_version is not None
+        else applied_version
+    )
+
     return {
         "sequenceId": int(sequence_id),
-        "errcode": 0,
-        "configVersion": applied_version,
+        "errcode": int(errcode),
+        "configVersion": response_version,
     }
 
 
@@ -242,6 +255,32 @@ def _describe_config_update(update: AccessPointConfigUpdate) -> str:
     return " ".join(parts)
 
 
+def _apply_config_update(update: AccessPointConfigUpdate) -> int:
+    if not (
+        update.radios
+        or update.wlans
+        or update.management_vlan is not None
+        or update.portal_free_policy is not None
+    ):
+        return CONFIG_OK
+
+    capabilities = detect_platform_capabilities()
+    log.info("Detected AP platform capabilities: %s", capability_summary(capabilities))
+    result = OpenWrtUciAdapter().reconcile(update, capabilities)
+    if result.applied:
+        if result.changed:
+            log.info(
+                "Applied AP platform config through OpenWrt UCI: commands=%d",
+                result.command_count,
+            )
+        else:
+            log.info("AP platform config required no local UCI changes")
+        return CONFIG_OK
+
+    log.error("AP platform config reconciliation failed: %s", result.error)
+    return CONFIG_ERROR
+
+
 def _send_set_response(
     sock: socket.socket,
     request: dict[str, Any],
@@ -249,21 +288,19 @@ def _send_set_response(
     controller_id: str,
     current_config_version: int | None,
     dump_json: bool,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Acknowledge a controller SET_REQUEST and return version/sequence."""
     request_header = request.get("header") or {}
+    errcode = CONFIG_OK
     try:
         update = parse_set_request(request)
         log.info("Parsed AP SET_REQUEST domains: %s", _describe_config_update(update))
+        errcode = _apply_config_update(update)
     except ValueError as exc:
-        # Keep the current conservative behavior: until the adapter/reconciler
-        # is enabled, malformed AP subdocuments are logged but the envelope ACK
-        # path still follows BaseConfigResponse so existing adoption labs keep
-        # working. The apply phase will convert validation failures into device
-        # config errors once those components are advertised.
+        errcode = CONFIG_ERROR
         log.warning("Could not parse AP config domains in SET_REQUEST: %s", exc)
     response_body = _set_response_body(
-        request, current_config_version=current_config_version
+        request, current_config_version=current_config_version, errcode=errcode
     )
     response = build_message(
         mac=config.MAC,
@@ -280,7 +317,11 @@ def _send_set_response(
     )
     send_tcp_message(sock, response)
     _log_message("TX/TCP", response, dump_json=dump_json)
-    return int(response_body["configVersion"]), int(response_body["sequenceId"])
+    return (
+        int(response_body["configVersion"]),
+        int(response_body["sequenceId"]),
+        int(response_body["errcode"]),
+    )
 
 
 def _send_inform(
@@ -606,13 +647,20 @@ def run_v2_adoption(
             header = message.get("header") or {}
             msg_type = int(header.get("type", -1))
             if msg_type == int(MessageType.SET_REQUEST):
-                applied_config_version, applied_sequence_id = _send_set_response(
+                applied_config_version, applied_sequence_id, set_errcode = _send_set_response(
                     sock,
                     message,
                     controller_id=controller_id,
                     current_config_version=config_version,
                     dump_json=dump_json,
                 )
+                if set_errcode != CONFIG_OK:
+                    log.error(
+                        "Controller SET_REQUEST failed locally: errcode=%d sequenceId=%d",
+                        set_errcode,
+                        applied_sequence_id,
+                    )
+                    continue
                 config_version = applied_config_version
                 sequence_id = applied_sequence_id
                 save_state(

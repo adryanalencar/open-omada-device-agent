@@ -97,6 +97,33 @@ def test_reconcile_rejects_vlan_when_capability_is_disabled():
     assert runner.calls == []
 
 
+def test_builds_network_interface_for_enabled_ssid_vlan_capability():
+    update = parse_config_body(
+        {"ssid_2G": {"radioId": 0, "ssid": [{"ssidName": "lab", "vlanId": 30}]}}
+    )
+
+    batch = build_uci_batch(update, _caps(supports_ssid_vlan=True))
+
+    assert "delete network.openomada_vlan30" in batch
+    assert "set network.openomada_vlan30=interface" in batch
+    assert "set network.openomada_vlan30.device='br-lan.30'" in batch
+    assert "commit network" in batch
+    assert "set wireless.openomada_2g_lab.network='openomada_vlan30'" in batch
+
+
+def test_reconcile_rejects_portal_free_policy_until_enforcement_exists():
+    update = parse_config_body(
+        {"portalFreePolicyConfig": {"portalFreePolicy": [{"value": "192.0.2.10"}]}}
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtUciAdapter(runner).reconcile(update, _caps(supports_portal=True))
+
+    assert result.applied is False
+    assert "portal free policy reconciliation is not implemented" in result.error
+    assert runner.calls == []
+
+
 def test_reconcile_reports_wifi_reload_failure():
     update = parse_config_body(
         {"ssid_2G": {"radioId": 0, "ssid": [{"ssidName": "lab", "pskKey": "secret"}]}}
