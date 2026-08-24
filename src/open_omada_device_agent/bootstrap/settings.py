@@ -1,5 +1,6 @@
 """Immutable settings passed from the environment boundary into the runtime."""
 from pathlib import Path
+import os
 
 from .. import config
 from ..application.settings import AgentSettings as RuntimeAgentSettings
@@ -57,4 +58,19 @@ class AgentSettings(RuntimeAgentSettings):
             device_username=config.DEVICE_USERNAME,
             device_password=config.DEVICE_PASSWORD,
             device_cipher_type=config.DEVICE_CIPHER_TYPE,
+            capability_environment=tuple(
+                sorted(
+                    (name, value)
+                    for name, value in os.environ.items()
+                    if name.startswith("OMADA_CAP_")
+                    or name
+                    in {
+                        "OMADA_PLATFORM",
+                        "OMADA_RADIO_BANDS",
+                        "OMADA_MAX_SSIDS",
+                        "OMADA_LED_BRIGHTNESS_PATH",
+                        "OMADA_LED_TRIGGER_PATH",
+                    }
+                )
+            ),
         )

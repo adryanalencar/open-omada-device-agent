@@ -397,6 +397,24 @@ def _send_get_response(
     return int(response_body["sequenceId"]), int(response_body["errcode"])
 
 
+def _handle_managed_get_request(
+    sock: socket.socket,
+    request: dict[str, Any],
+    *,
+    controller_id: str,
+    dump_json: bool,
+    services: ManagedSessionServices,
+) -> tuple[int, int]:
+    """Handle one managed GET through the injected session dependencies."""
+    return _send_get_response(
+        sock,
+        request,
+        controller_id=controller_id,
+        dump_json=dump_json,
+        services=services,
+    )
+
+
 def _send_notify_reply(
     sock: socket.socket,
     request: dict[str, Any],
@@ -811,11 +829,12 @@ def run_v2_adoption(
                     applied_sequence_id,
                 )
             elif msg_type == int(MessageType.GET_REQUEST):
-                get_sequence_id, get_errcode = _send_get_response(
+                get_sequence_id, get_errcode = _handle_managed_get_request(
                     sock,
                     message,
                     controller_id=controller_id,
                     dump_json=dump_json,
+                    services=services,
                 )
                 log.error(
                     "Controller GET_REQUEST key is unsupported locally: errcode=%d sequenceId=%d",

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from functools import lru_cache, partial
 
 from ..application.configuration import ApplyDeviceConfiguration
+from ..application.contracts import PlatformCapabilities
 from ..adapters.outbound.openwrt.device_commands import OpenWrtClientControlAdapter, SysfsLedAdapter
 from ..adapters.outbound.openwrt.uci import OpenWrtUciAdapter
 from ..adapters.outbound.openwrt.capabilities import detect_platform_capabilities
@@ -23,11 +24,13 @@ class AgentRuntime:
     state_repository: JsonSessionStateRepository
     settings: AgentSettings
     device_profile: GenericOpenWrtAccessPointProfile
+    capabilities: PlatformCapabilities
 
 
 @lru_cache(maxsize=1)
 def build_runtime(settings: AgentSettings) -> AgentRuntime:
     """Build production dependencies; tests may construct the use cases directly."""
+    capabilities = detect_platform_capabilities(env=dict(settings.capability_environment))
     profile = GenericOpenWrtAccessPointProfile(
         settings,
         ip_address=partial(
@@ -39,7 +42,7 @@ def build_runtime(settings: AgentSettings) -> AgentRuntime:
     )
     return AgentRuntime(
         configuration=ApplyDeviceConfiguration(
-            capability_detector=detect_platform_capabilities,
+            capability_detector=lambda: capabilities,
             platform_ports=(
                 OpenWrtUciAdapter(
                     management_vlan_interface=settings.management_vlan_interface,
@@ -71,10 +74,12 @@ def build_runtime(settings: AgentSettings) -> AgentRuntime:
             lan=LanObservation(settings.lan_rate, settings.lan_duplex, settings.lan_port),
             clients=lambda: merge_wireless_client_states(
                 clients_from_dhcp_leases(load_dnsmasq_leases(settings.dhcp_lease_file)),
-                collect_openwrt_wireless_clients(),
+                collect_openwrt_wireless_clients(capabilities=capabilities),
             ),
             client_projection=client_stats_payload,
-            wireless_projection=collect_openwrt_wireless_inform,
+            wireless_projection=lambda: collect_openwrt_wireless_inform(
+                capabilities=capabilities
+            ),
         ),
         state_repository=JsonSessionStateRepository(
             settings.state_file,
@@ -83,4 +88,5 @@ def build_runtime(settings: AgentSettings) -> AgentRuntime:
         ),
         settings=settings,
         device_profile=profile,
+        capabilities=capabilities,
     )

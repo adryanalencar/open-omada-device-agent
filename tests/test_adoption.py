@@ -8,6 +8,7 @@ from open_omada_device_agent.adoption import (
     _describe_config_update,
     _device_negotiation_body,
     _get_response_body,
+    _handle_managed_get_request,
     _project_inform_body,
     _notify_reply_body,
     _preconnect_body,
@@ -74,7 +75,7 @@ def test_inform_includes_real_dhcp_lease_clients_when_available(tmp_path, monkey
     monkeypatch.setattr(config, "DHCP_LEASE_FILE", str(leases))
     monkeypatch.setattr(
         "open_omada_device_agent.bootstrap.runtime.collect_openwrt_wireless_clients",
-        lambda: (),
+        lambda **_kwargs: (),
     )
 
     from open_omada_device_agent.bootstrap import AgentSettings, build_runtime
@@ -233,6 +234,27 @@ def test_send_get_response_preserves_header_sequence():
     assert message["header"]["type"] == int(MessageType.GET_RESPONSE)
     assert message["header"]["seq"] == 42
     assert message["body"]["unsupportedKeys"] == ["gps"]
+
+
+def test_managed_get_request_passes_session_services_to_response_handler():
+    sock = RecordingSocket()
+    services = build_runtime(AgentSettings.from_environment())
+
+    sequence_id, errcode = _handle_managed_get_request(
+        sock,
+        {
+            "header": {"type": int(MessageType.GET_REQUEST), "seq": 91},
+            "body": {"sequenceId": 17, "powerControl": {}},
+        },
+        controller_id="controller-id",
+        dump_json=False,
+        services=services,
+    )
+
+    response = decode_frame(sock.sent)
+    assert (sequence_id, errcode) == (17, 1)
+    assert response["header"]["seq"] == 91
+    assert response["body"]["unsupportedKeys"] == ["powerControl"]
 
 
 def test_notify_reply_body_preserves_notify_id_and_subject():

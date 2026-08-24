@@ -161,3 +161,12 @@ existing characterization tests during migration. New internal code must not
 use these façades. Concrete OpenWrt UCI, capability detection, telemetry, client
 observations, device commands, and portal enforcement live under
 `adapters.outbound.openwrt`; the façades contain no duplicate implementation.
+
+## Incremental projection debt
+
+OpenWrt wireless telemetry still translates some host observations directly to
+legacy Omada inform keys, and client payload serialization remains colocated
+with the client observation adapter. A later behavior-preserving migration
+should introduce typed wireless observations and move those two serializers
+fully into `projections.inform`. This is an explicit migration seam, not a
+contract for new platform adapters.

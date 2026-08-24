@@ -1,5 +1,5 @@
 """Immutable runtime settings consumed through application services."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -49,9 +49,10 @@ class AgentSettings:
     destination_controller_id: str
     site_id: str
     device_username: str
-    device_password: str
+    device_password: str = field(repr=False)
     device_cipher_type: int
     state_file: Path
+    capability_environment: tuple[tuple[str, str], ...]
 
     def validate(self) -> None:
         if not self.controller_host:

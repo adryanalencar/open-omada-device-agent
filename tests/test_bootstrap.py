@@ -50,3 +50,24 @@ def test_repository_rejects_state_for_a_different_runtime_identity(tmp_path):
         assert "identity" in str(exc)
     else:
         raise AssertionError("repository accepted state for another device")
+
+
+def test_settings_repr_redacts_device_password():
+    settings = replace(
+        AgentSettings.from_environment(),
+        device_password="do-not-log-this-secret",
+    )
+
+    assert "do-not-log-this-secret" not in repr(settings)
+
+
+def test_capabilities_use_bootstrap_snapshot_not_later_environment(monkeypatch):
+    settings = replace(
+        AgentSettings.from_environment(),
+        capability_environment=(("OMADA_PLATFORM", "generic"),),
+    )
+    monkeypatch.setenv("OMADA_PLATFORM", "openwrt")
+
+    runtime = build_runtime(settings)
+
+    assert runtime.capabilities.platform == "generic"
