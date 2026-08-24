@@ -38,6 +38,8 @@ class PlatformCapabilities:
     supports_dhcp_tracking: bool = False
     supports_option82: bool = False
     supports_led_control: bool = False
+    supports_client_operations: bool = False
+    supports_client_rate_limits: bool = False
 
 
 def detect_platform_capabilities(
@@ -85,6 +87,12 @@ def detect_platform_capabilities(
             "OMADA_CAP_LED",
             bool(values.get("OMADA_LED_BRIGHTNESS_PATH", "").strip()),
         ),
+        supports_client_operations=_feature(
+            values,
+            "OMADA_CAP_CLIENT_OPERATIONS",
+            openwrt and has_ubus,
+        ),
+        supports_client_rate_limits=_feature(values, "OMADA_CAP_CLIENT_RATE_LIMITS", False),
     )
 
 
@@ -104,6 +112,8 @@ def capability_summary(capabilities: PlatformCapabilities) -> str:
         "supports_dhcp_tracking",
         "supports_option82",
         "supports_led_control",
+        "supports_client_operations",
+        "supports_client_rate_limits",
     ):
         if getattr(capabilities, field):
             enabled.append(field.removeprefix("supports_"))

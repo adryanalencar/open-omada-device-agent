@@ -73,6 +73,12 @@ LED_BRIGHTNESS_PATH = os.getenv("OMADA_LED_BRIGHTNESS_PATH", "").strip()
 LED_ON_VALUE = os.getenv("OMADA_LED_ON_VALUE", "1")
 LED_OFF_VALUE = os.getenv("OMADA_LED_OFF_VALUE", "0")
 
+# Optional client operations. Reconnect/deauth uses OpenWrt hostapd ubus
+# objects, while block/unblock uses an nftables bridge table to drop traffic
+# from the client MAC after association.
+HOSTAPD_UBUS_IFACE = os.getenv("OMADA_HOSTAPD_UBUS_IFACE", "").strip()
+CLIENT_BLOCK_INTERFACE = os.getenv("OMADA_CLIENT_BLOCK_INTERFACE", "").strip()
+
 # ECSP V2 framing/protocol identity.
 ECSP_VERSION = os.getenv("OMADA_ECSP_VERSION", "2.3.0")
 ECSP_VER_CAP = _int("OMADA_ECSP_VER_CAP", 2)

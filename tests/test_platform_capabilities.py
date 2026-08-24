@@ -31,6 +31,7 @@ def test_detects_openwrt_wlan_capability_from_tools():
     assert caps.supports_wpa2_psk is True
     assert caps.supports_portal is False
     assert caps.supports_dynamic_vlan is False
+    assert caps.supports_client_operations is True
 
 
 def test_capability_overrides_do_not_infer_unsupported_features():
@@ -60,6 +61,19 @@ def test_led_capability_is_enabled_by_configured_brightness_path():
     )
 
     assert caps.supports_led_control is True
+
+
+def test_client_rate_limit_capability_remains_opt_in():
+    caps = detect_platform_capabilities(
+        env={
+            "OMADA_PLATFORM": "openwrt",
+            "OMADA_CAP_CLIENT_RATE_LIMITS": "true",
+        },
+        command_exists=lambda name: f"/sbin/{name}" if name == "ubus" else None,
+    )
+
+    assert caps.supports_client_operations is True
+    assert caps.supports_client_rate_limits is True
 
 
 def test_capability_summary_is_secret_free_and_stable():

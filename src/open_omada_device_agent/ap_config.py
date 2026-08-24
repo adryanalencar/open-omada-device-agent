@@ -7,6 +7,10 @@ from typing import Any
 from .domain import (
     AccessPointConfigUpdate,
     CaptivePortalBinding,
+    ClientAuthConfig,
+    ClientControlOperation,
+    ClientRateConfig,
+    ClientRateLimit,
     DhcpOption82,
     LedConfig,
     ManagementVlan,
@@ -38,6 +42,10 @@ SSID_KEYS: dict[str, RadioBand] = {
 
 KNOWN_COMMON_KEYS = {"sequenceId", "configVersion", "configVersionInc"}
 KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | {
+    "clientConfig",
+    "clientOperation",
+    "clientOperation_cmd",
+    "clientRateConfig",
     "led",
     "managementVlan",
     "portalFreePolicyConfig",
@@ -86,6 +94,24 @@ def parse_config_body(body: Mapping[str, Any]) -> AccessPointConfigUpdate:
     if raw_wifi_control_led is not None:
         wifi_control_led = _parse_wifi_control_led(raw_wifi_control_led)
 
+    client_configs: tuple[ClientAuthConfig, ...] = ()
+    raw_client_config = body.get("clientConfig")
+    if raw_client_config is not None:
+        client_configs = _parse_client_config(raw_client_config)
+
+    client_operations: list[ClientControlOperation] = []
+    for source_key in ("clientOperation", "clientOperation_cmd"):
+        raw_client_operation = body.get(source_key)
+        if raw_client_operation is not None:
+            client_operations.extend(
+                _parse_client_operations(raw_client_operation, source_key=source_key)
+            )
+
+    client_rate_config = None
+    raw_client_rate_config = body.get("clientRateConfig")
+    if raw_client_rate_config is not None:
+        client_rate_config = _parse_client_rate_config(raw_client_rate_config)
+
     unhandled = tuple(
         sorted(
             key
@@ -103,6 +129,9 @@ def parse_config_body(body: Mapping[str, Any]) -> AccessPointConfigUpdate:
         portal_free_policy=portal_free_policy,
         led=led,
         wifi_control_led=wifi_control_led,
+        client_configs=client_configs,
+        client_operations=tuple(client_operations),
+        client_rate_config=client_rate_config,
         unhandled_keys=unhandled,
         raw_body=dict(body),
     )
@@ -251,14 +280,84 @@ def _parse_wifi_control_led(raw: Any) -> WifiControlLedConfig:
     )
 
 
+def _parse_client_config(raw: Any) -> tuple[ClientAuthConfig, ...]:
+    return tuple(_parse_client_config_item(item) for item in _iter_items(raw, "clientConfig"))
+
+
+def _parse_client_config_item(raw: Any) -> ClientAuthConfig:
+    data = _require_mapping(raw, "clientConfig item")
+    return ClientAuthConfig(
+        client_mac=_required_str(data.get("clientMac"), "clientConfig.clientMac"),
+        unauthenticated=_optional_bool(data.get("unauth")),
+        raw=dict(data),
+    )
+
+
+def _parse_client_operations(
+    raw: Any,
+    *,
+    source_key: str,
+) -> tuple[ClientControlOperation, ...]:
+    return tuple(
+        _parse_client_operation_item(item, source_key=source_key)
+        for item in _iter_items(raw, source_key)
+    )
+
+
+def _parse_client_operation_item(
+    raw: Any,
+    *,
+    source_key: str,
+) -> ClientControlOperation:
+    data = _require_mapping(raw, f"{source_key} item")
+    return ClientControlOperation(
+        client_mac=_required_str(data.get("clientMac"), f"{source_key}.clientMac"),
+        operation=_optional_int(data.get("operation")),
+        ssid=_optional_str(data.get("ssid")),
+        radio_id=_optional_int(data.get("radioId")),
+        vid=_optional_int(data.get("vid")),
+        port=_optional_int(data.get("port")),
+        wireless=_optional_bool(data.get("wireless")),
+        source_key=source_key,
+        raw=dict(data),
+    )
+
+
+def _parse_client_rate_config(raw: Any) -> ClientRateConfig:
+    data = _require_mapping(raw, "clientRateConfig")
+    limits = tuple(
+        _parse_client_rate_limit(item)
+        for item in _iter_items(data.get("clientRateLimit") or (), "clientRateLimit")
+    )
+    return ClientRateConfig(
+        action=_optional_int(data.get("action")),
+        limits=limits,
+        raw=dict(data),
+    )
+
+
+def _parse_client_rate_limit(raw: Any) -> ClientRateLimit:
+    data = _require_mapping(raw, "clientRateLimit item")
+    return ClientRateLimit(
+        mac=_required_str(data.get("mac"), "clientRateLimit.mac"),
+        down=_optional_int(data.get("down")),
+        up=_optional_int(data.get("up")),
+        raw=dict(data),
+    )
+
+
 def _iter_ssid_items(raw: Any) -> Iterable[Any]:
+    return _iter_items(raw, "SSID list")
+
+
+def _iter_items(raw: Any, label: str) -> Iterable[Any]:
     if raw is None:
         return ()
     if isinstance(raw, Mapping):
         return (raw,)
     if isinstance(raw, Iterable) and not isinstance(raw, (str, bytes, bytearray)):
         return raw
-    raise ValueError("SSID list must be an object or array")
+    raise ValueError(f"{label} must be an object or array")
 
 
 def _require_mapping(value: Any, label: str) -> Mapping[str, Any]:
@@ -280,6 +379,12 @@ def _optional_int(value: Any) -> int | None:
 def _optional_str(value: Any) -> str | None:
     if value is None:
         return None
+    return str(value)
+
+
+def _required_str(value: Any, label: str) -> str:
+    if value is None or str(value).strip() == "":
+        raise ValueError(f"{label} is required")
     return str(value)
 
 

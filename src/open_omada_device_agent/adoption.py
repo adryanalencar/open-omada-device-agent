@@ -15,7 +15,7 @@ from .ap_config import parse_set_request
 from .capabilities import ap_components_v2
 from .client_tracking import client_stats_payload, clients_from_dhcp_leases, load_dnsmasq_leases
 from .crypto import calculate_md5_mode_auth
-from .device_commands import SysfsLedAdapter
+from .device_commands import OpenWrtClientControlAdapter, SysfsLedAdapter
 from .domain import AccessPointConfigUpdate
 from .ecsp import (
     CipherType,
@@ -304,6 +304,20 @@ def _describe_config_update(update: AccessPointConfigUpdate) -> str:
             f"l2:{len(update.portal_free_policy.layer2_rules)},"
             f"url:{len(update.portal_free_policy.url_rules)}"
         )
+    if update.client_configs:
+        parts.append(f"clientConfig={len(update.client_configs)}")
+    if update.client_operations:
+        ops = ",".join(
+            "unknown" if operation.operation is None else str(operation.operation)
+            for operation in update.client_operations
+        )
+        parts.append(f"clientOperation={len(update.client_operations)}[{ops}]")
+    if update.client_rate_config is not None:
+        parts.append(
+            "clientRateConfig="
+            f"action:{update.client_rate_config.action},"
+            f"limits:{len(update.client_rate_config.limits)}"
+        )
     if update.unhandled_keys:
         parts.append(f"unhandled={','.join(update.unhandled_keys)}")
     return " ".join(parts)
@@ -320,7 +334,13 @@ def _apply_config_update(update: AccessPointConfigUpdate) -> int:
         or update.management_vlan is not None
         or update.portal_free_policy is not None
     )
-    has_device_commands = update.led is not None or update.wifi_control_led is not None
+    has_device_commands = (
+        update.led is not None
+        or update.wifi_control_led is not None
+        or bool(update.client_configs)
+        or bool(update.client_operations)
+        or update.client_rate_config is not None
+    )
     if not (has_platform_config or has_device_commands):
         return CONFIG_OK
 
@@ -346,6 +366,13 @@ def _apply_config_update(update: AccessPointConfigUpdate) -> int:
             return CONFIG_ERROR
         if result.changed:
             log.info("Applied AP device command through local platform adapter")
+
+        result = OpenWrtClientControlAdapter().reconcile(update, capabilities)
+        if not result.applied:
+            log.error("AP client control reconciliation failed: %s", result.error)
+            return CONFIG_ERROR
+        if result.changed:
+            log.info("Applied AP client control through local platform adapter")
 
     return CONFIG_OK
 

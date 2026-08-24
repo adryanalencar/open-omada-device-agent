@@ -1,7 +1,12 @@
 import pytest
 
 from open_omada_device_agent.ap_config import parse_config_body, parse_set_request
-from open_omada_device_agent.domain import RadioBand, validate_ssid_name, validate_vlan_id
+from open_omada_device_agent.domain import (
+    ClientOperationCode,
+    RadioBand,
+    validate_ssid_name,
+    validate_vlan_id,
+)
 
 
 def test_parse_radio_wlan_vlan_and_portal_config_from_set_body():
@@ -112,6 +117,53 @@ def test_parse_wifi_control_led_config():
     assert update.wifi_control_led is not None
     assert update.wifi_control_led.enabled is False
     assert update.wifi_control_led.is_pressed is True
+
+
+def test_parse_client_config_operation_and_rate_limit_models():
+    update = parse_config_body(
+        {
+            "clientConfig": [{"clientMac": "aa:bb:cc:dd:ee:ff", "unauth": True}],
+            "clientOperation_cmd": [
+                {"clientMac": "aa:bb:cc:dd:ee:ff", "operation": 2},
+            ],
+            "clientOperation": [
+                {
+                    "clientMac": "02:00:00:00:00:02",
+                    "operation": 3,
+                    "ssid": "guest",
+                    "radioId": 1,
+                }
+            ],
+            "clientRateConfig": {
+                "action": 0,
+                "clientRateLimit": [
+                    {"mac": "aa:bb:cc:dd:ee:ff", "down": 1024, "up": 512}
+                ],
+            },
+        }
+    )
+
+    assert update.unhandled_keys == ()
+    assert update.client_configs[0].client_mac == "aa:bb:cc:dd:ee:ff"
+    assert update.client_configs[0].unauthenticated is True
+
+    assert update.client_operations[0].source_key == "clientOperation"
+    assert update.client_operations[0].operation_code is ClientOperationCode.PORTAL_UNAUTH
+    assert update.client_operations[0].ssid == "guest"
+    assert update.client_operations[0].radio_id == 1
+    assert update.client_operations[1].source_key == "clientOperation_cmd"
+    assert update.client_operations[1].operation_code is ClientOperationCode.RECONNECT
+
+    assert update.client_rate_config is not None
+    assert update.client_rate_config.action == 0
+    assert update.client_rate_config.limits[0].mac == "aa:bb:cc:dd:ee:ff"
+    assert update.client_rate_config.limits[0].down == 1024
+    assert update.client_rate_config.limits[0].up == 512
+
+
+def test_parse_client_operation_requires_client_mac():
+    with pytest.raises(ValueError, match="clientOperation.clientMac"):
+        parse_config_body({"clientOperation": [{"operation": 2}]})
 
 
 def test_validate_ssid_rejects_names_over_32_bytes():
