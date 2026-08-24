@@ -33,10 +33,17 @@ Omada Network Application `6.2.14.11` and an EAP110 v4-compatible AP profile.
 | Restart without another manual Adopt | ✅ Working |
 | Managed rediscovery / stale-context recovery | ✅ Working |
 | Periodic device informs | ✅ Working |
-| `SET_REQUEST` acknowledgement | 🟡 Partial |
+| `SET_REQUEST` acknowledgement | 🟡 Partial; rejects unsupported keys |
+| Radio/SSID configuration | 🟡 Partial OpenWrt UCI adapter |
+| SSID VLAN configuration | 🟡 Opt-in OpenWrt UCI adapter |
+| DHCP lease client reporting | 🟡 Partial |
+| OpenWrt radio/SSID telemetry | 🟡 Partial via `ubus` |
+| LED enable/disable | 🟡 Optional sysfs adapter |
+| FORGET / forget-no-reset response | ✅ Working |
+| Captive portal sessions/enforcement | 🟡 Library support; not wired to SSID provisioning |
+| Portal RADIUS authentication | 🟡 Library support; not wired to HTTP portal flow |
 | `GET_REQUEST` | 🚧 Not implemented |
 | Notify/report families | 🚧 Not implemented |
-| Radio/SSID/client telemetry | 🚧 Planned |
 | Switch/gateway/OLT device profiles | 🚧 Planned |
 
 The capability table is intentionally conservative. The agent advertises only
@@ -203,13 +210,22 @@ sequenceDiagram
 .
 ├── src/open_omada_device_agent/
 │   ├── adoption.py          # TLS, verification, negotiation, managed channel
+│   ├── ap_config.py         # AP SET_REQUEST domain parser
 │   ├── capabilities.py      # conservative component advertisement
+│   ├── client_tracking.py   # DHCP lease to client inform mapping
 │   ├── config.py            # OMADA_* environment configuration
 │   ├── crypto.py            # legacy V2 authentication primitives
+│   ├── device_commands.py   # local LED/device command adapters
 │   ├── discovery.py         # UDP discovery and reconnect supervision
+│   ├── domain.py            # AP config/client/portal domain models
 │   ├── ecsp.py              # message types and length-prefixed JSON codec
 │   ├── identity.py          # reference AP identity and telemetry
+│   ├── openwrt.py           # OpenWrt UCI reconciliation
+│   ├── portal.py            # captive portal session lifecycle
+│   ├── portal_enforcement.py# nftables captive portal policy adapter
+│   ├── radius.py            # minimal RADIUS PAP client
 │   ├── session_state.py     # non-secret managed state persistence
+│   ├── telemetry.py         # OpenWrt wireless inform telemetry
 │   └── cli.py               # command-line entry point
 ├── docs/
 ├── tests/
