@@ -29,7 +29,7 @@ def test_detects_openwrt_wlan_capability_from_tools():
     assert caps.max_ssids == 8
     assert caps.supports_wlan_config is True
     assert caps.supports_wpa2_psk is True
-    assert caps.supports_portal is True
+    assert caps.supports_portal is False
     assert caps.supports_dynamic_vlan is False
 
 
@@ -39,7 +39,7 @@ def test_capability_overrides_do_not_infer_unsupported_features():
             "OMADA_PLATFORM": "generic",
             "OMADA_CAP_WLAN": "true",
             "OMADA_CAP_DYNAMIC_VLAN": "true",
-            "OMADA_CAP_PORTAL": "false",
+            "OMADA_CAP_PORTAL": "true",
         },
         command_exists=lambda _name: None,
     )
@@ -47,7 +47,7 @@ def test_capability_overrides_do_not_infer_unsupported_features():
     assert caps.platform == "generic"
     assert caps.supports_wlan_config is True
     assert caps.supports_dynamic_vlan is True
-    assert caps.supports_portal is False
+    assert caps.supports_portal is True
 
 
 def test_capability_summary_is_secret_free_and_stable():

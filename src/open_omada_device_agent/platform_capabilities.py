@@ -76,7 +76,7 @@ def detect_platform_capabilities(
         supports_ssid_vlan=_feature(values, "OMADA_CAP_SSID_VLAN", False),
         supports_dynamic_vlan=_feature(values, "OMADA_CAP_DYNAMIC_VLAN", False),
         supports_management_vlan=_feature(values, "OMADA_CAP_MANAGEMENT_VLAN", False),
-        supports_portal=_feature(values, "OMADA_CAP_PORTAL", openwrt and has_nft),
+        supports_portal=_feature(values, "OMADA_CAP_PORTAL", False),
         supports_dhcp_tracking=_feature(values, "OMADA_CAP_DHCP_TRACKING", openwrt and has_ubus),
         supports_option82=_feature(values, "OMADA_CAP_OPTION82", False),
     )

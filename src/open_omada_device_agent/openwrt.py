@@ -124,9 +124,21 @@ def validate_update(
             and not capabilities.supports_option82
         ):
             errors.append("DHCP Option 82 requested but platform capability is disabled")
+        if wlan.portal.enabled:
+            errors.append("portal WLAN reconciliation is not implemented")
         if wlan.portal.enabled and not capabilities.supports_portal:
             errors.append("portal WLAN requested but platform capability is disabled")
-        if wlan.security.psk_key is not None and not capabilities.supports_wpa2_psk:
+        if (
+            wlan.security.psk_key is not None
+            and wlan.security.psk_version == 3
+            and not capabilities.supports_wpa3_psk
+        ):
+            errors.append("WPA3-PSK WLAN requested but WPA3-PSK capability is disabled")
+        if (
+            wlan.security.psk_key is not None
+            and wlan.security.psk_version != 3
+            and not capabilities.supports_wpa2_psk
+        ):
             errors.append("PSK WLAN requested but WPA2-PSK capability is disabled")
         if (
             wlan.security.radius_auth is not None

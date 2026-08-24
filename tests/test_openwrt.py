@@ -124,6 +124,37 @@ def test_reconcile_rejects_portal_free_policy_until_enforcement_exists():
     assert runner.calls == []
 
 
+def test_reconcile_rejects_portal_wlan_until_enforcement_is_wired():
+    update = parse_config_body(
+        {"ssid_2G": {"radioId": 0, "ssid": [{"ssidName": "guest", "portal": True}]}}
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtUciAdapter(runner).reconcile(update, _caps(supports_portal=True))
+
+    assert result.applied is False
+    assert "portal WLAN reconciliation is not implemented" in result.error
+    assert runner.calls == []
+
+
+def test_reconcile_rejects_wpa3_psk_when_capability_is_disabled():
+    update = parse_config_body(
+        {
+            "ssid_2G": {
+                "radioId": 0,
+                "ssid": [{"ssidName": "lab", "pskVer": 3, "pskKey": "secret"}],
+            }
+        }
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtUciAdapter(runner).reconcile(update, _caps(supports_wpa3_psk=False))
+
+    assert result.applied is False
+    assert "WPA3-PSK WLAN requested" in result.error
+    assert runner.calls == []
+
+
 def test_reconcile_reports_wifi_reload_failure():
     update = parse_config_body(
         {"ssid_2G": {"radioId": 0, "ssid": [{"ssidName": "lab", "pskKey": "secret"}]}}
