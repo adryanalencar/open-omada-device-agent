@@ -37,3 +37,4 @@ __MACOSX/
 *.pcapng
 *.cap
 *.har
+sources/
