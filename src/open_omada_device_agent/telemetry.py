@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
-from .domain import RadioBand
+from .domain import RadioBand, WirelessClientState
+from .ecsp import normalize_mac
 from .openwrt import CommandRunner, SubprocessRunner
 from .platform_capabilities import PlatformCapabilities, detect_platform_capabilities
 
@@ -15,6 +17,13 @@ INFORM_SUFFIX_BY_BAND = {
     RadioBand.FIVE_G2: "5G2",
     RadioBand.SIX_G: "6G",
 }
+
+
+@dataclass(frozen=True)
+class OpenWrtWirelessInterface:
+    ifname: str
+    ssid: str | None
+    band: RadioBand | None
 
 
 class OpenWrtWirelessTelemetry:
@@ -37,6 +46,40 @@ class OpenWrtWirelessTelemetry:
         return openwrt_wireless_inform_from_status(status)
 
 
+class OpenWrtHostapdClientTelemetry:
+    def __init__(self, runner: CommandRunner | None = None) -> None:
+        self._runner = runner or SubprocessRunner()
+
+    def collect(self) -> tuple[WirelessClientState, ...]:
+        try:
+            result = self._runner.run(["ubus", "call", "network.wireless", "status"])
+        except OSError:
+            return ()
+        if result.returncode != 0 or not result.stdout.strip():
+            return ()
+        try:
+            status = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return ()
+        if not isinstance(status, Mapping):
+            return ()
+
+        clients: list[WirelessClientState] = []
+        for interface in openwrt_wireless_interfaces_from_status(status):
+            hostapd = self._runner.run(
+                ["ubus", "call", f"hostapd.{interface.ifname}", "get_clients"]
+            )
+            if hostapd.returncode != 0 or not hostapd.stdout.strip():
+                continue
+            try:
+                hostapd_status = json.loads(hostapd.stdout)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(hostapd_status, Mapping):
+                clients.extend(hostapd_client_states(interface, hostapd_status))
+        return tuple(sorted(clients, key=lambda client: client.mac))
+
+
 def collect_openwrt_wireless_inform(
     *,
     capabilities: PlatformCapabilities | None = None,
@@ -46,6 +89,17 @@ def collect_openwrt_wireless_inform(
     if detected.platform != "openwrt" or not detected.has_ubus:
         return {}
     return OpenWrtWirelessTelemetry(runner).collect()
+
+
+def collect_openwrt_wireless_clients(
+    *,
+    capabilities: PlatformCapabilities | None = None,
+    runner: CommandRunner | None = None,
+) -> tuple[WirelessClientState, ...]:
+    detected = capabilities or detect_platform_capabilities()
+    if detected.platform != "openwrt" or not detected.has_ubus:
+        return ()
+    return OpenWrtHostapdClientTelemetry(runner).collect()
 
 
 def openwrt_wireless_inform_from_status(status: Mapping[str, Any]) -> dict[str, object]:
@@ -69,6 +123,73 @@ def openwrt_wireless_inform_from_status(status: Mapping[str, Any]) -> dict[str, 
         if ssid_stats:
             payload[f"ssidStats_{suffix}"] = list(ssid_stats)
     return payload
+
+
+def openwrt_wireless_interfaces_from_status(
+    status: Mapping[str, Any],
+) -> tuple[OpenWrtWirelessInterface, ...]:
+    interfaces: list[OpenWrtWirelessInterface] = []
+    for radio_name, raw_radio in status.items():
+        if not isinstance(raw_radio, Mapping):
+            continue
+        band = _band_from_radio_name(str(radio_name))
+        for interface in _interfaces(raw_radio.get("interfaces")):
+            ifname = _interface_ifname(interface)
+            if not ifname:
+                continue
+            config = _mapping(interface.get("config"))
+            ssid = interface.get("ssid") or config.get("ssid")
+            interfaces.append(
+                OpenWrtWirelessInterface(
+                    ifname=str(ifname),
+                    ssid=str(ssid) if ssid else None,
+                    band=band,
+                )
+            )
+    return tuple(interfaces)
+
+
+def hostapd_client_states(
+    interface: OpenWrtWirelessInterface,
+    hostapd_status: Mapping[str, Any],
+) -> tuple[WirelessClientState, ...]:
+    raw_clients = hostapd_status.get("clients")
+    if not isinstance(raw_clients, Mapping):
+        return ()
+    clients: list[WirelessClientState] = []
+    for raw_mac, raw_client in raw_clients.items():
+        if not isinstance(raw_client, Mapping):
+            continue
+        try:
+            mac = normalize_mac(str(raw_mac))
+        except ValueError:
+            continue
+        bytes_info = _mapping(raw_client.get("bytes"))
+        packet_info = _mapping(raw_client.get("packets"))
+        rate_info = _mapping(raw_client.get("rate"))
+        clients.append(
+            WirelessClientState(
+                mac=mac,
+                ssid=interface.ssid,
+                radio=interface.band,
+                rssi=_optional_int(raw_client.get("signal"), raw_client.get("rssi")),
+                snr=_optional_int(raw_client.get("snr")),
+                # Domain names are historical: rx_bytes is serialized as Omada
+                # "down"; hostapd tx is AP -> station downlink traffic.
+                rx_bytes=_counter(bytes_info, "tx", "tx_bytes"),
+                tx_bytes=_counter(bytes_info, "rx", "rx_bytes"),
+                rx_packets=_optional_int(packet_info.get("rx"), packet_info.get("rx_packets")),
+                tx_packets=_optional_int(packet_info.get("tx"), packet_info.get("tx_packets")),
+                rx_rate=_optional_int(rate_info.get("rx"), raw_client.get("rx_rate")),
+                tx_rate=_optional_int(rate_info.get("tx"), raw_client.get("tx_rate")),
+                association_time=_optional_int(
+                    raw_client.get("connected_time"),
+                    raw_client.get("association_time"),
+                    raw_client.get("aTime"),
+                ),
+            )
+        )
+    return tuple(clients)
 
 
 def _wireless_info(
@@ -147,6 +268,19 @@ def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+def _interface_ifname(interface: Mapping[str, Any]) -> str | None:
+    config = _mapping(interface.get("config"))
+    for value in (
+        interface.get("ifname"),
+        interface.get("ifname_current"),
+        interface.get("section"),
+        config.get("ifname"),
+    ):
+        if value:
+            return str(value)
+    return None
+
+
 def _copy_counter(
     target: dict[str, object],
     target_key: str,
@@ -162,6 +296,21 @@ def _copy_counter(
         except (TypeError, ValueError):
             continue
         return
+
+
+def _counter(source: Mapping[str, Any], *source_keys: str) -> int:
+    return _optional_int(*(source.get(key) for key in source_keys)) or 0
+
+
+def _optional_int(*values: Any) -> int | None:
+    for value in values:
+        if value is None or value == "":
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _band_from_radio_name(name: str) -> RadioBand | None:

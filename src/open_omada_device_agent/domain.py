@@ -210,6 +210,11 @@ class WirelessClientState:
     portal_state: PortalClientState = PortalClientState.UNKNOWN
     rx_bytes: int = 0
     tx_bytes: int = 0
+    rx_packets: int | None = None
+    tx_packets: int | None = None
+    rx_rate: int | None = None
+    tx_rate: int | None = None
+    association_time: int | None = None
 
 
 @dataclass(frozen=True)

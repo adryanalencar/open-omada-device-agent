@@ -1,8 +1,10 @@
 from open_omada_device_agent.client_tracking import (
     client_stats_payload,
     clients_from_dhcp_leases,
+    merge_wireless_client_states,
     parse_dnsmasq_leases,
 )
+from open_omada_device_agent.domain import RadioBand, WirelessClientState
 
 
 def test_parse_dnsmasq_leases_and_merge_latest_by_mac():
@@ -27,8 +29,22 @@ def test_parse_dnsmasq_leases_and_merge_latest_by_mac():
 
 
 def test_client_stats_payload_uses_controller_field_names():
-    clients = clients_from_dhcp_leases(
-        parse_dnsmasq_leases("1000 aa:bb:cc:dd:ee:ff 192.0.2.10 phone *")
+    clients = (
+        WirelessClientState(
+            mac="aa:bb:cc:dd:ee:ff",
+            ipv4="192.0.2.10",
+            hostname="phone",
+            ssid="guest",
+            radio=RadioBand.TWO_G,
+            rssi=-62,
+            rx_bytes=123,
+            tx_bytes=45,
+            rx_packets=4,
+            tx_packets=8,
+            rx_rate=6500,
+            tx_rate=7200,
+            association_time=12,
+        ),
     )
 
     payload = client_stats_payload(clients)
@@ -37,8 +53,47 @@ def test_client_stats_payload_uses_controller_field_names():
         {
             "mac": "aa:bb:cc:dd:ee:ff",
             "ip": "192.0.2.10",
-            "deviceName": "phone",
-            "down": 0,
-            "up": 0,
+            "name": "phone",
+            "ssid": "guest",
+            "rid": 0,
+            "rssi": -62,
+            "down": 123,
+            "up": 45,
+            "rxP": 4,
+            "txP": 8,
+            "rxR": 6500,
+            "txR": 7200,
+            "aTime": 12,
         }
     ]
+
+
+def test_merge_wireless_client_states_preserves_dhcp_identity_and_hostapd_metrics():
+    dhcp_clients = clients_from_dhcp_leases(
+        parse_dnsmasq_leases("1000 aa:bb:cc:dd:ee:ff 192.0.2.10 phone *")
+    )
+    hostapd_clients = (
+        WirelessClientState(
+            mac="aa:bb:cc:dd:ee:ff",
+            ssid="guest",
+            radio=RadioBand.TWO_G,
+            rssi=-60,
+            rx_bytes=100,
+            tx_bytes=20,
+        ),
+    )
+
+    merged = merge_wireless_client_states(dhcp_clients, hostapd_clients)
+
+    assert merged == (
+        WirelessClientState(
+            mac="aa:bb:cc:dd:ee:ff",
+            ipv4="192.0.2.10",
+            hostname="phone",
+            ssid="guest",
+            radio=RadioBand.TWO_G,
+            rssi=-60,
+            rx_bytes=100,
+            tx_bytes=20,
+        ),
+    )

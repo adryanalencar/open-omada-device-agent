@@ -13,7 +13,12 @@ from typing import Any
 from . import config
 from .ap_config import parse_set_request
 from .capabilities import ap_components_v2
-from .client_tracking import client_stats_payload, clients_from_dhcp_leases, load_dnsmasq_leases
+from .client_tracking import (
+    client_stats_payload,
+    clients_from_dhcp_leases,
+    load_dnsmasq_leases,
+    merge_wireless_client_states,
+)
 from .crypto import calculate_md5_mode_auth
 from .device_commands import OpenWrtClientControlAdapter, SysfsLedAdapter
 from .domain import AccessPointConfigUpdate
@@ -29,7 +34,7 @@ from .identity import controller_setting, device_info, device_misc
 from .openwrt import OpenWrtUciAdapter
 from .platform_capabilities import capability_summary, detect_platform_capabilities
 from .session_state import clear_state, save_state
-from .telemetry import collect_openwrt_wireless_inform
+from .telemetry import collect_openwrt_wireless_clients, collect_openwrt_wireless_inform
 
 log = logging.getLogger("open_omada.adoption")
 CONFIG_OK = 0
@@ -166,7 +171,10 @@ def _inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
             "port": config.LAN_PORT,
         },
     }
-    clients = clients_from_dhcp_leases(load_dnsmasq_leases(config.DHCP_LEASE_FILE))
+    clients = merge_wireless_client_states(
+        clients_from_dhcp_leases(load_dnsmasq_leases(config.DHCP_LEASE_FILE)),
+        collect_openwrt_wireless_clients(),
+    )
     if clients:
         body["clients"] = client_stats_payload(clients)
     body.update(collect_openwrt_wireless_inform())
