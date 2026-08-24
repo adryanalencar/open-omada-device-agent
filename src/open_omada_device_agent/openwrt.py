@@ -125,8 +125,6 @@ def validate_update(
             and not capabilities.supports_option82
         ):
             errors.append("DHCP Option 82 requested but platform capability is disabled")
-        if wlan.portal.enabled:
-            errors.append("portal WLAN reconciliation is not implemented")
         if wlan.portal.enabled and not capabilities.supports_portal:
             errors.append("portal WLAN requested but platform capability is disabled")
         if (
@@ -164,8 +162,8 @@ def validate_update(
             errors.append(
                 "OMADA_MANAGEMENT_VLAN_INTERFACE and OMADA_MANAGEMENT_VLAN_DEVICE are required"
             )
-    if update.portal_free_policy is not None:
-        errors.append("portal free policy reconciliation is not implemented")
+    if update.portal_free_policy is not None and not capabilities.supports_portal:
+        errors.append("portal free policy requested but platform capability is disabled")
     return tuple(dict.fromkeys(errors))
 
 

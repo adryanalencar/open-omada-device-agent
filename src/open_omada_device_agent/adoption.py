@@ -33,6 +33,7 @@ from .ecsp import (
 from .identity import controller_setting, device_info, device_misc
 from .openwrt import OpenWrtUciAdapter
 from .platform_capabilities import capability_summary, detect_platform_capabilities
+from .portal_runtime import OpenWrtPortalRuntime
 from .session_state import clear_state, save_state
 from .telemetry import collect_openwrt_wireless_clients, collect_openwrt_wireless_inform
 
@@ -366,6 +367,13 @@ def _apply_config_update(update: AccessPointConfigUpdate) -> int:
             )
         else:
             log.info("AP platform config required no local UCI changes")
+
+        result = OpenWrtPortalRuntime().reconcile(update, capabilities)
+        if not result.applied:
+            log.error("AP portal runtime reconciliation failed: %s", result.error)
+            return CONFIG_ERROR
+        if result.changed:
+            log.info("Applied AP portal enforcement through local nftables adapter")
 
     if has_device_commands:
         result = SysfsLedAdapter().reconcile(update, capabilities)

@@ -143,20 +143,20 @@ def test_reconcile_rejects_enabled_management_vlan_without_target(monkeypatch):
     assert runner.calls == []
 
 
-def test_reconcile_rejects_portal_free_policy_until_enforcement_exists():
+def test_reconcile_rejects_portal_free_policy_when_capability_is_disabled():
     update = parse_config_body(
         {"portalFreePolicyConfig": {"portalFreePolicy": [{"value": "192.0.2.10"}]}}
     )
     runner = RecordingRunner()
 
-    result = OpenWrtUciAdapter(runner).reconcile(update, _caps(supports_portal=True))
+    result = OpenWrtUciAdapter(runner).reconcile(update, _caps(supports_portal=False))
 
     assert result.applied is False
-    assert "portal free policy reconciliation is not implemented" in result.error
+    assert "portal free policy requested" in result.error
     assert runner.calls == []
 
 
-def test_reconcile_rejects_portal_wlan_until_enforcement_is_wired():
+def test_reconcile_allows_portal_wlan_when_capability_is_enabled():
     update = parse_config_body(
         {"ssid_2G": {"radioId": 0, "ssid": [{"ssidName": "guest", "portal": True}]}}
     )
@@ -164,9 +164,10 @@ def test_reconcile_rejects_portal_wlan_until_enforcement_is_wired():
 
     result = OpenWrtUciAdapter(runner).reconcile(update, _caps(supports_portal=True))
 
-    assert result.applied is False
-    assert "portal WLAN reconciliation is not implemented" in result.error
-    assert runner.calls == []
+    assert result.applied is True
+    assert result.changed is True
+    assert runner.calls[0][0] == ("uci", "-q", "batch")
+    assert "set wireless.openomada_2g_guest.ssid='guest'" in (runner.calls[0][1] or "")
 
 
 def test_reconcile_rejects_wpa3_psk_when_capability_is_disabled():

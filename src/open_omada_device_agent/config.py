@@ -83,6 +83,11 @@ HOSTAPD_UBUS_IFACE = os.getenv("OMADA_HOSTAPD_UBUS_IFACE", "").strip()
 CLIENT_BLOCK_INTERFACE = os.getenv("OMADA_CLIENT_BLOCK_INTERFACE", "").strip()
 CLIENT_RATE_LIMIT_INTERFACE = os.getenv("OMADA_CLIENT_RATE_LIMIT_INTERFACE", "").strip()
 
+# Optional captive-portal enforcement. The agent only enforces traffic policy
+# and HTTP redirect; a local portal web application must listen on this port.
+PORTAL_INTERFACE = os.getenv("OMADA_PORTAL_INTERFACE", "").strip()
+PORTAL_REDIRECT_PORT = _int("OMADA_PORTAL_REDIRECT_PORT", 8080)
+
 # Optional management VLAN reconciliation. These must be explicit because the
 # wrong OpenWrt network target can move the AP out of reach.
 MANAGEMENT_VLAN_INTERFACE = os.getenv("OMADA_MANAGEMENT_VLAN_INTERFACE", "").strip()
