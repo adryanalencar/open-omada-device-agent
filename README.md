@@ -36,14 +36,17 @@ Omada Network Application `6.2.14.11` and an EAP110 v4-compatible AP profile.
 | `SET_REQUEST` acknowledgement | 🟡 Partial; rejects unsupported keys |
 | Radio/SSID configuration | 🟡 Partial OpenWrt UCI adapter |
 | SSID VLAN configuration | 🟡 Opt-in OpenWrt UCI adapter |
-| DHCP lease client reporting | 🟡 Partial |
+| Management VLAN configuration | 🟡 Opt-in OpenWrt UCI adapter |
+| DHCP lease and hostapd client reporting | 🟡 Partial |
 | OpenWrt radio/SSID telemetry | 🟡 Partial via `ubus` |
-| LED enable/disable | 🟡 Optional sysfs adapter |
+| Client operations and rate limits | 🟡 Optional `ubus`/nftables adapters |
+| LED enable/disable/locate | 🟡 Optional sysfs adapter |
 | FORGET / forget-no-reset response | ✅ Working |
-| Captive portal sessions/enforcement | 🟡 Library support; not wired to SSID provisioning |
+| Captive portal sessions/enforcement | 🟡 nftables enforcement can be wired to portal WLANs; no bundled portal web UI |
 | Portal RADIUS authentication | 🟡 Library support; not wired to HTTP portal flow |
-| `GET_REQUEST` | 🚧 Not implemented |
-| Notify/report families | 🚧 Not implemented |
+| `GET_REQUEST` | 🟡 Defensive unsupported-key responses |
+| Notify families | 🟡 Defensive unsupported replies |
+| Report family | 🚧 Not implemented |
 | Switch/gateway/OLT device profiles | 🚧 Planned |
 
 The capability table is intentionally conservative. The agent advertises only

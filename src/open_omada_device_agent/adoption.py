@@ -827,8 +827,9 @@ def run_v2_adoption(
         next_inform_at = time.monotonic() + max(0.5, config.INFORM_INTERVAL)
 
         # The next phase is the managed-device protocol (SET/GET/INFORM/NOTIFY).
-        # SET_RESPONSE is now grounded in the controller's BaseConfigResponse
-        # schema. GET/NOTIFY remain capture-only until we observe concrete bodies.
+        # SET_RESPONSE is grounded in the controller's BaseConfigResponse
+        # schema. GET/NOTIFY handlers preserve request correlation and return
+        # explicit unsupported responses until payload-specific bodies are known.
         sock.settimeout(0.5)
         while True:
             now = time.monotonic()
@@ -890,7 +891,7 @@ def run_v2_adoption(
                     dump_json=dump_json,
                 )
                 log.error(
-                    "Controller GET_REQUEST is not implemented locally: errcode=%d sequenceId=%d",
+                    "Controller GET_REQUEST key is unsupported locally: errcode=%d sequenceId=%d",
                     get_errcode,
                     get_sequence_id,
                 )
@@ -905,7 +906,7 @@ def run_v2_adoption(
                     dump_json=dump_json,
                 )
                 if replied:
-                    log.error("Controller NOTIFY_REQUEST is not implemented locally")
+                    log.error("Controller NOTIFY_REQUEST subject is unsupported locally")
             elif msg_type in {
                 int(MessageType.FORGET_REQUEST),
                 int(MessageType.FORGET_REQUEST_NO_RESET),

@@ -13,22 +13,24 @@ identifiers.
 | Device negotiation | ✅ | Conservative AP component map |
 | System negotiation | ✅ | Config/version metadata consumed |
 | Initial sync result | ✅ | ACK validated |
-| Inform | 🟡 | Device, wired LAN, DHCP lease clients, and OpenWrt `wSettings_*` / `ssidStats_*` when `ubus` is available |
+| Inform | 🟡 | Device, wired LAN, DHCP lease clients, hostapd station metrics, and OpenWrt `wSettings_*` / `ssidStats_*` when `ubus` is available |
 | SET | 🟡 | Envelope/version ACKs plus parsed AP domains; unsupported keys return local error instead of fake success |
 | WLAN/radio config | 🟡 | OpenWrt UCI adapter for basic radios and PSK SSIDs |
 | SSID VLAN config | 🟡 | Opt-in UCI network interface mapping; dynamic VLAN/Option82 remain rejected unless implemented |
-| LED config | 🟡 | Optional sysfs brightness adapter for `led.enable`; `led.locate` and `wifiControlLed` are rejected |
+| Management VLAN config | 🟡 | Opt-in UCI device remapping via explicit local target variables |
+| Client operations | 🟡 | Reconnect/deauth through hostapd `ubus`; block/unblock and rate-limits through nftables bridge policy |
+| LED config | 🟡 | Optional sysfs brightness adapter for `led.enable`; optional trigger adapter for `led.locate`; `wifiControlLed` remains rejected |
 | FORGET | ✅ | `FORGET_REQUEST` and no-reset variant are ACKed and clear local reconnect state |
-| GET | 🚧 | Message identifiers known; handlers not implemented |
-| NOTIFY | 🚧 | Identifiers known; handlers not implemented |
+| GET | 🟡 | Handler replies with correlated `GET_RESPONSE` and unsupported-key metadata |
+| NOTIFY | 🟡 | Handler replies to v1/v2 notify requests unless `nre=1`; payload-specific handlers are not implemented |
 | REPORT | 🚧 | Identifier known; report schemas not implemented |
 | Upgrade | 🚧 | Not implemented |
 | File transfer | 🚧 | Not implemented |
 | Remote terminal | 🚧 | Not implemented |
 | Radio telemetry | 🟡 | Basic OpenWrt wireless settings from `ubus`; radio traffic counters not emitted until complete counters are available |
 | SSID telemetry | 🟡 | OpenWrt SSID/client counts and optional interface counters |
-| Client telemetry | 🟡 | DHCP lease backed IP/hostname reporting; Wi-Fi association metrics require platform station source |
-| Captive portal | 🟡 | Session lifecycle, nftables policy rendering, and RADIUS client exist; SSID provisioning still rejects portal WLANs |
+| Client telemetry | 🟡 | DHCP lease backed IP/hostname merged with hostapd station RSSI/rate/traffic where available |
+| Captive portal | 🟡 | Session lifecycle, RADIUS client, and nftables portal enforcement are available; no bundled portal web UI |
 | Mesh | 🚧 | Not implemented |
 | Switch profile | 🚧 | Not implemented |
 | Gateway profile | 🚧 | Not implemented |
