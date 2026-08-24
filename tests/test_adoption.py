@@ -6,9 +6,13 @@ from open_omada_device_agent.adoption import (
     _apply_config_update,
     _describe_config_update,
     _device_negotiation_body,
+    _get_response_body,
     _inform_body,
+    _notify_reply_body,
     _preconnect_body,
     _send_forget_response,
+    _send_get_response,
+    _send_notify_reply,
     _set_response_body,
 )
 from open_omada_device_agent.discovery import build_discovery
@@ -185,6 +189,93 @@ def test_forget_no_reset_response_uses_no_reset_type():
     assert response_type is MessageType.FORGET_RESPONSE_NO_RESET
     assert message["header"]["type"] == int(MessageType.FORGET_RESPONSE_NO_RESET)
     assert "seq" not in message["header"]
+
+
+def test_get_response_reports_unsupported_keys_without_success():
+    request = {
+        "header": {"type": int(MessageType.GET_REQUEST), "seq": 42},
+        "body": {"sequenceId": 12, "powerControl": {}},
+    }
+
+    assert _get_response_body(request) == {
+        "sequenceId": 12,
+        "errcode": 1,
+        "unsupportedKeys": ["powerControl"],
+    }
+
+
+def test_send_get_response_preserves_header_sequence():
+    sock = RecordingSocket()
+
+    sequence_id, errcode = _send_get_response(
+        sock,
+        {
+            "header": {"type": int(MessageType.GET_REQUEST), "seq": 42},
+            "body": {"sequenceId": 12, "gps": {}},
+        },
+        controller_id="controller-id",
+        dump_json=False,
+    )
+
+    message = decode_frame(sock.sent)
+    assert sequence_id == 12
+    assert errcode == 1
+    assert message["header"]["type"] == int(MessageType.GET_RESPONSE)
+    assert message["header"]["seq"] == 42
+    assert message["body"]["unsupportedKeys"] == ["gps"]
+
+
+def test_notify_reply_body_preserves_notify_id_and_subject():
+    request = {
+        "header": {"type": int(MessageType.NOTIFY_REQUEST), "seq": 7},
+        "body": {"nid": 99, "sub": 15, "ctnt": {"value": True}},
+    }
+
+    assert _notify_reply_body(request) == {
+        "nid": 99,
+        "sub": 15,
+        "err": 1,
+        "rst": {"error": "unsupported notify request"},
+    }
+
+
+def test_send_notify_reply_uses_v2_reply_for_v2_request():
+    sock = RecordingSocket()
+
+    replied = _send_notify_reply(
+        sock,
+        {
+            "header": {"type": int(MessageType.NOTIFY_REQUEST_V2), "seq": 7},
+            "body": {"nid": 99, "sub": 15, "ctnt": {"value": True}},
+        },
+        controller_id="controller-id",
+        dump_json=False,
+    )
+
+    message = decode_frame(sock.sent)
+    assert replied is True
+    assert message["header"]["type"] == int(MessageType.NOTIFY_REPLY_V2)
+    assert message["header"]["seq"] == 7
+    assert message["body"]["nid"] == 99
+    assert message["body"]["sub"] == 15
+    assert message["body"]["err"] == 1
+
+
+def test_send_notify_reply_honors_no_reply_flag():
+    sock = RecordingSocket()
+
+    replied = _send_notify_reply(
+        sock,
+        {
+            "header": {"type": int(MessageType.NOTIFY_REQUEST), "seq": 7},
+            "body": {"nid": 99, "sub": 15, "nre": 1},
+        },
+        controller_id="controller-id",
+        dump_json=False,
+    )
+
+    assert replied is False
+    assert sock.sent == b""
 
 
 def test_set_response_rejects_increment_when_current_version_is_unknown():

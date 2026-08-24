@@ -234,6 +234,44 @@ def _set_response_body(
     }
 
 
+def _get_response_body(request: dict[str, Any], *, errcode: int = CONFIG_ERROR) -> dict[str, Any]:
+    body = request.get("body") or {}
+    if not isinstance(body, dict):
+        raise RuntimeError("GET_REQUEST body is not an object")
+    sequence_id = body.get("sequenceId")
+    if sequence_id is None:
+        raise RuntimeError("GET_REQUEST is missing sequenceId")
+    request_keys = tuple(sorted(key for key in body if key != "sequenceId"))
+    response: dict[str, Any] = {
+        "sequenceId": int(sequence_id),
+        "errcode": int(errcode),
+    }
+    if request_keys:
+        response["unsupportedKeys"] = list(request_keys)
+    return response
+
+
+def _notify_reply_body(
+    request: dict[str, Any],
+    *,
+    errcode: int = CONFIG_ERROR,
+    result: object | None = None,
+) -> dict[str, Any]:
+    body = request.get("body") or {}
+    if not isinstance(body, dict):
+        raise RuntimeError("NOTIFY_REQUEST body is not an object")
+    reply: dict[str, Any] = {"err": int(errcode)}
+    if body.get("nid") is not None:
+        reply["nid"] = int(body["nid"])
+    if body.get("sub") is not None:
+        reply["sub"] = int(body["sub"])
+    if result is not None:
+        reply["rst"] = result
+    elif errcode != CONFIG_OK:
+        reply["rst"] = {"error": "unsupported notify request"}
+    return reply
+
+
 def _describe_config_update(update: AccessPointConfigUpdate) -> str:
     parts = [
         f"sequenceId={update.sequence_id}",
@@ -376,6 +414,69 @@ def _send_inform(
     )
     send_tcp_message(sock, inform)
     _log_message("TX/TCP", inform, dump_json=dump_json)
+
+
+def _send_get_response(
+    sock: socket.socket,
+    request: dict[str, Any],
+    *,
+    controller_id: str,
+    dump_json: bool,
+) -> tuple[int, int]:
+    request_header = request.get("header") or {}
+    response_body = _get_response_body(request, errcode=CONFIG_ERROR)
+    response = build_message(
+        mac=config.MAC,
+        msg_type=MessageType.GET_RESPONSE,
+        body=response_body,
+        version=config.ECSP_VERSION,
+        ver_cap=config.ECSP_VER_CAP,
+        seq=request_header.get("seq"),
+        dest=controller_id,
+        timestamp=int(time.time() * 1000),
+        error=0,
+    )
+    send_tcp_message(sock, response)
+    _log_message("TX/TCP", response, dump_json=dump_json)
+    return int(response_body["sequenceId"]), int(response_body["errcode"])
+
+
+def _send_notify_reply(
+    sock: socket.socket,
+    request: dict[str, Any],
+    *,
+    controller_id: str,
+    dump_json: bool,
+) -> bool:
+    request_header = request.get("header") or {}
+    body = request.get("body") or {}
+    if isinstance(body, dict) and int(body.get("nre") or 0) == 1:
+        log.info(
+            "Controller NOTIFY_REQUEST has nre=1; no reply will be sent for subject=%r notifyId=%r",
+            body.get("sub"),
+            body.get("nid"),
+        )
+        return False
+    request_type = int(request_header.get("type", -1))
+    response_type = (
+        MessageType.NOTIFY_REPLY_V2
+        if request_type == int(MessageType.NOTIFY_REQUEST_V2)
+        else MessageType.NOTIFY_REPLY
+    )
+    response = build_message(
+        mac=config.MAC,
+        msg_type=response_type,
+        body=_notify_reply_body(request, errcode=CONFIG_ERROR),
+        version=config.ECSP_VERSION,
+        ver_cap=config.ECSP_VER_CAP,
+        seq=request_header.get("seq"),
+        dest=controller_id,
+        timestamp=int(time.time() * 1000),
+        error=0,
+    )
+    send_tcp_message(sock, response)
+    _log_message("TX/TCP", response, dump_json=dump_json)
+    return True
 
 
 def _send_forget_response(
@@ -738,6 +839,30 @@ def run_v2_adoption(
                     applied_config_version,
                     applied_sequence_id,
                 )
+            elif msg_type == int(MessageType.GET_REQUEST):
+                get_sequence_id, get_errcode = _send_get_response(
+                    sock,
+                    message,
+                    controller_id=controller_id,
+                    dump_json=dump_json,
+                )
+                log.error(
+                    "Controller GET_REQUEST is not implemented locally: errcode=%d sequenceId=%d",
+                    get_errcode,
+                    get_sequence_id,
+                )
+            elif msg_type in {
+                int(MessageType.NOTIFY_REQUEST),
+                int(MessageType.NOTIFY_REQUEST_V2),
+            }:
+                replied = _send_notify_reply(
+                    sock,
+                    message,
+                    controller_id=controller_id,
+                    dump_json=dump_json,
+                )
+                if replied:
+                    log.error("Controller NOTIFY_REQUEST is not implemented locally")
             elif msg_type in {
                 int(MessageType.FORGET_REQUEST),
                 int(MessageType.FORGET_REQUEST_NO_RESET),
