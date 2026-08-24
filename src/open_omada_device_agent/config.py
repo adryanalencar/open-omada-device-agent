@@ -67,6 +67,12 @@ LAN_PORT = os.getenv("OMADA_LAN_PORT", "LAN")
 # omit client entries.
 DHCP_LEASE_FILE = os.getenv("OMADA_DHCP_LEASE_FILE", "/tmp/dhcp.leases").strip()
 
+# Optional Linux/OpenWrt sysfs LED control. Leave unset unless the operator has
+# mapped a real AP status LED brightness file.
+LED_BRIGHTNESS_PATH = os.getenv("OMADA_LED_BRIGHTNESS_PATH", "").strip()
+LED_ON_VALUE = os.getenv("OMADA_LED_ON_VALUE", "1")
+LED_OFF_VALUE = os.getenv("OMADA_LED_OFF_VALUE", "0")
+
 # ECSP V2 framing/protocol identity.
 ECSP_VERSION = os.getenv("OMADA_ECSP_VERSION", "2.3.0")
 ECSP_VER_CAP = _int("OMADA_ECSP_VER_CAP", 2)

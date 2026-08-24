@@ -8,12 +8,14 @@ from .domain import (
     AccessPointConfigUpdate,
     CaptivePortalBinding,
     DhcpOption82,
+    LedConfig,
     ManagementVlan,
     PortalFreePolicy,
     RadioBand,
     RadioConfig,
     SecretValue,
     VlanAssignment,
+    WifiControlLedConfig,
     WirelessNetwork,
     WirelessSecurity,
     validate_ssid_name,
@@ -36,8 +38,10 @@ SSID_KEYS: dict[str, RadioBand] = {
 
 KNOWN_COMMON_KEYS = {"sequenceId", "configVersion", "configVersionInc"}
 KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | {
+    "led",
     "managementVlan",
     "portalFreePolicyConfig",
+    "wifiControlLed",
 }
 
 
@@ -72,6 +76,16 @@ def parse_config_body(body: Mapping[str, Any]) -> AccessPointConfigUpdate:
     if raw_portal_free_policy is not None:
         portal_free_policy = _parse_portal_free_policy(raw_portal_free_policy)
 
+    led = None
+    raw_led = body.get("led")
+    if raw_led is not None:
+        led = _parse_led(raw_led)
+
+    wifi_control_led = None
+    raw_wifi_control_led = body.get("wifiControlLed")
+    if raw_wifi_control_led is not None:
+        wifi_control_led = _parse_wifi_control_led(raw_wifi_control_led)
+
     unhandled = tuple(
         sorted(
             key
@@ -87,6 +101,8 @@ def parse_config_body(body: Mapping[str, Any]) -> AccessPointConfigUpdate:
         wlans=tuple(wlans),
         management_vlan=management_vlan,
         portal_free_policy=portal_free_policy,
+        led=led,
+        wifi_control_led=wifi_control_led,
         unhandled_keys=unhandled,
         raw_body=dict(body),
     )
@@ -217,6 +233,24 @@ def _parse_portal_free_policy(raw: Any) -> PortalFreePolicy:
     )
 
 
+def _parse_led(raw: Any) -> LedConfig:
+    data = _require_mapping(raw, "LED config")
+    return LedConfig(
+        enabled=_optional_enabled(data.get("enable")),
+        locate=_optional_bool(data.get("locate")),
+        raw=dict(data),
+    )
+
+
+def _parse_wifi_control_led(raw: Any) -> WifiControlLedConfig:
+    data = _require_mapping(raw, "WiFi control LED config")
+    return WifiControlLedConfig(
+        enabled=_optional_enabled(data.get("enable")),
+        is_pressed=_optional_bool(data.get("isPressed")),
+        raw=dict(data),
+    )
+
+
 def _iter_ssid_items(raw: Any) -> Iterable[Any]:
     if raw is None:
         return ()
@@ -259,6 +293,12 @@ def _optional_bool(value: Any) -> bool | None:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on", "enable", "enabled"}
     return bool(value)
+
+
+def _optional_enabled(value: Any) -> bool | None:
+    if value is None:
+        return None
+    return _enabled_string(value)
 
 
 def _enabled_string(value: Any) -> bool:

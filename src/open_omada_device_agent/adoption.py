@@ -15,6 +15,7 @@ from .ap_config import parse_set_request
 from .capabilities import ap_components_v2
 from .client_tracking import client_stats_payload, clients_from_dhcp_leases, load_dnsmasq_leases
 from .crypto import calculate_md5_mode_auth
+from .device_commands import SysfsLedAdapter
 from .domain import AccessPointConfigUpdate
 from .ecsp import (
     CipherType,
@@ -251,6 +252,14 @@ def _describe_config_update(update: AccessPointConfigUpdate) -> str:
             f"{'on' if update.management_vlan.enabled else 'off'}:"
             f"{update.management_vlan.vlan_id}"
         )
+    if update.led is not None:
+        parts.append(
+            "led="
+            f"enable:{update.led.enabled if update.led.enabled is not None else 'unset'},"
+            f"locate:{update.led.locate if update.led.locate is not None else 'unset'}"
+        )
+    if update.wifi_control_led is not None:
+        parts.append("wifiControlLed=present")
     if update.portal_free_policy is not None:
         parts.append(
             "portalFreePolicy="
@@ -263,18 +272,27 @@ def _describe_config_update(update: AccessPointConfigUpdate) -> str:
 
 
 def _apply_config_update(update: AccessPointConfigUpdate) -> int:
-    if not (
+    if update.unhandled_keys:
+        log.error("Unsupported AP SET_REQUEST keys: %s", ",".join(update.unhandled_keys))
+        return CONFIG_ERROR
+
+    has_platform_config = (
         update.radios
         or update.wlans
         or update.management_vlan is not None
         or update.portal_free_policy is not None
-    ):
+    )
+    has_device_commands = update.led is not None or update.wifi_control_led is not None
+    if not (has_platform_config or has_device_commands):
         return CONFIG_OK
 
     capabilities = detect_platform_capabilities()
     log.info("Detected AP platform capabilities: %s", capability_summary(capabilities))
-    result = OpenWrtUciAdapter().reconcile(update, capabilities)
-    if result.applied:
+    if has_platform_config:
+        result = OpenWrtUciAdapter().reconcile(update, capabilities)
+        if not result.applied:
+            log.error("AP platform config reconciliation failed: %s", result.error)
+            return CONFIG_ERROR
         if result.changed:
             log.info(
                 "Applied AP platform config through OpenWrt UCI: commands=%d",
@@ -282,10 +300,16 @@ def _apply_config_update(update: AccessPointConfigUpdate) -> int:
             )
         else:
             log.info("AP platform config required no local UCI changes")
-        return CONFIG_OK
 
-    log.error("AP platform config reconciliation failed: %s", result.error)
-    return CONFIG_ERROR
+    if has_device_commands:
+        result = SysfsLedAdapter().reconcile(update, capabilities)
+        if not result.applied:
+            log.error("AP device command reconciliation failed: %s", result.error)
+            return CONFIG_ERROR
+        if result.changed:
+            log.info("Applied AP device command through local platform adapter")
+
+    return CONFIG_OK
 
 
 def _send_set_response(

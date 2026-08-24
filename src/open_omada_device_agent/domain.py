@@ -99,6 +99,20 @@ class CaptivePortalBinding:
 
 
 @dataclass(frozen=True)
+class LedConfig:
+    enabled: bool | None = None
+    locate: bool | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class WifiControlLedConfig:
+    enabled: bool | None = None
+    is_pressed: bool | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class WirelessNetwork:
     band: RadioBand
     radio_id: int | None
@@ -153,6 +167,8 @@ class AccessPointConfigUpdate:
     wlans: tuple[WirelessNetwork, ...] = ()
     management_vlan: ManagementVlan | None = None
     portal_free_policy: PortalFreePolicy | None = None
+    led: LedConfig | None = None
+    wifi_control_led: WifiControlLedConfig | None = None
     unhandled_keys: tuple[str, ...] = ()
     raw_body: Mapping[str, Any] = field(default_factory=dict)
 

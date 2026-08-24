@@ -3,6 +3,7 @@ import time
 from open_omada_device_agent import config
 from open_omada_device_agent.adoption import (
     CONFIG_ERROR,
+    _apply_config_update,
     _describe_config_update,
     _device_negotiation_body,
     _inform_body,
@@ -255,3 +256,9 @@ def test_describe_config_update_reports_domains_without_secrets():
     assert "portalFreePolicy=l2:1,url:2" in description
     assert "private" not in description
     assert "do-not-log" not in description
+
+
+def test_apply_config_update_rejects_unhandled_keys_without_fake_ack():
+    update = parse_config_body({"unsupportedCommand": {"enabled": True}})
+
+    assert _apply_config_update(update) == CONFIG_ERROR

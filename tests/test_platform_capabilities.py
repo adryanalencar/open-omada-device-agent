@@ -50,6 +50,18 @@ def test_capability_overrides_do_not_infer_unsupported_features():
     assert caps.supports_portal is True
 
 
+def test_led_capability_is_enabled_by_configured_brightness_path():
+    caps = detect_platform_capabilities(
+        env={
+            "OMADA_PLATFORM": "generic",
+            "OMADA_LED_BRIGHTNESS_PATH": "/sys/class/leds/status/brightness",
+        },
+        command_exists=lambda _name: None,
+    )
+
+    assert caps.supports_led_control is True
+
+
 def test_capability_summary_is_secret_free_and_stable():
     caps = detect_platform_capabilities(
         env={"OMADA_PLATFORM": "generic", "OMADA_CAP_RADIUS": "true"},

@@ -61,7 +61,10 @@ def test_parse_radio_wlan_vlan_and_portal_config_from_set_body():
 
     assert update.sequence_id == 42
     assert update.config_version == 7
-    assert update.unhandled_keys == ("led",)
+    assert update.unhandled_keys == ()
+    assert update.led is not None
+    assert update.led.enabled is True
+    assert update.led.locate is None
 
     radio = update.radios[0]
     assert radio.band is RadioBand.TWO_G
@@ -101,6 +104,14 @@ def test_parse_set_request_requires_object_body():
 def test_parse_ssid_rejects_invalid_vlan():
     with pytest.raises(ValueError, match="VLAN ID"):
         parse_config_body({"ssid_5G": {"ssid": [{"ssidName": "bad", "vlanId": 5000}]}})
+
+
+def test_parse_wifi_control_led_config():
+    update = parse_config_body({"wifiControlLed": {"enable": "off", "isPressed": True}})
+
+    assert update.wifi_control_led is not None
+    assert update.wifi_control_led.enabled is False
+    assert update.wifi_control_led.is_pressed is True
 
 
 def test_validate_ssid_rejects_names_over_32_bytes():
