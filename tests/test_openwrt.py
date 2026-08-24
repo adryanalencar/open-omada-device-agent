@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 
 from open_omada_device_agent.ap_config import parse_config_body
 from open_omada_device_agent.domain import RadioBand
+import open_omada_device_agent.openwrt as openwrt
 from open_omada_device_agent.openwrt import CommandResult, OpenWrtUciAdapter, build_uci_batch
 from open_omada_device_agent.platform_capabilities import PlatformCapabilities
 
@@ -109,6 +110,37 @@ def test_builds_network_interface_for_enabled_ssid_vlan_capability():
     assert "set network.openomada_vlan30.device='br-lan.30'" in batch
     assert "commit network" in batch
     assert "set wireless.openomada_2g_lab.network='openomada_vlan30'" in batch
+
+
+def test_builds_management_vlan_device_mapping_when_configured(monkeypatch):
+    monkeypatch.setattr(openwrt.config, "MANAGEMENT_VLAN_INTERFACE", "lan")
+    monkeypatch.setattr(openwrt.config, "MANAGEMENT_VLAN_DEVICE", "br-lan")
+    update = parse_config_body(
+        {"managementVlan": {"managementVlanEnable": "on", "managementVlanId": 99}}
+    )
+
+    batch = build_uci_batch(update, _caps(supports_management_vlan=True))
+
+    assert "set network.lan.device='br-lan.99'" in batch
+    assert "commit network" in batch
+
+
+def test_reconcile_rejects_enabled_management_vlan_without_target(monkeypatch):
+    monkeypatch.setattr(openwrt.config, "MANAGEMENT_VLAN_INTERFACE", "")
+    monkeypatch.setattr(openwrt.config, "MANAGEMENT_VLAN_DEVICE", "")
+    update = parse_config_body(
+        {"managementVlan": {"managementVlanEnable": "on", "managementVlanId": 99}}
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtUciAdapter(runner).reconcile(
+        update,
+        _caps(supports_management_vlan=True),
+    )
+
+    assert result.applied is False
+    assert "OMADA_MANAGEMENT_VLAN_INTERFACE" in result.error
+    assert runner.calls == []
 
 
 def test_reconcile_rejects_portal_free_policy_until_enforcement_exists():

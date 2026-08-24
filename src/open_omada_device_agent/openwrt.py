@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from . import config
 from .domain import AccessPointConfigUpdate, RadioBand, RadioConfig, WirelessNetwork
 from .platform_capabilities import PlatformCapabilities
 
@@ -152,6 +153,17 @@ def validate_update(
         and not capabilities.supports_management_vlan
     ):
         errors.append("management VLAN requested but platform capability is disabled")
+    if (
+        update.management_vlan is not None
+        and update.management_vlan.enabled
+        and capabilities.supports_management_vlan
+    ):
+        if update.management_vlan.vlan_id is None:
+            errors.append("enabled management VLAN is missing managementVlanId")
+        if not config.MANAGEMENT_VLAN_INTERFACE or not config.MANAGEMENT_VLAN_DEVICE:
+            errors.append(
+                "OMADA_MANAGEMENT_VLAN_INTERFACE and OMADA_MANAGEMENT_VLAN_DEVICE are required"
+            )
     if update.portal_free_policy is not None:
         errors.append("portal free policy reconciliation is not implemented")
     return tuple(dict.fromkeys(errors))
@@ -162,6 +174,7 @@ def build_uci_batch(
     capabilities: PlatformCapabilities,
 ) -> tuple[str, ...]:
     lines: list[str] = []
+    network_lines: list[str] = []
     vlan_ids = sorted(
         {
             wlan.vlan.vlan_id
@@ -170,8 +183,11 @@ def build_uci_batch(
         }
     )
     for vlan_id in vlan_ids:
-        lines.extend(_ssid_vlan_lines(vlan_id))
-    if vlan_ids:
+        network_lines.extend(_ssid_vlan_lines(vlan_id))
+    if update.management_vlan is not None:
+        network_lines.extend(_management_vlan_lines(update))
+    if network_lines:
+        lines.extend(network_lines)
         lines.append("commit network")
     for radio in update.radios:
         lines.extend(_radio_lines(radio))
@@ -233,6 +249,33 @@ def _ssid_vlan_lines(vlan_id: int) -> tuple[str, ...]:
         f"set network.{section}=interface",
         _set("network", section, "proto", "none"),
         _set("network", section, "device", f"br-lan.{vlan_id}"),
+    )
+
+
+def _management_vlan_lines(update: AccessPointConfigUpdate) -> tuple[str, ...]:
+    management_vlan = update.management_vlan
+    if management_vlan is None:
+        return ()
+    if not config.MANAGEMENT_VLAN_INTERFACE or not config.MANAGEMENT_VLAN_DEVICE:
+        return ()
+    if not management_vlan.enabled:
+        return (
+            _set(
+                "network",
+                config.MANAGEMENT_VLAN_INTERFACE,
+                "device",
+                config.MANAGEMENT_VLAN_DEVICE,
+            ),
+        )
+    if management_vlan.vlan_id is None:
+        return ()
+    return (
+        _set(
+            "network",
+            config.MANAGEMENT_VLAN_INTERFACE,
+            "device",
+            f"{config.MANAGEMENT_VLAN_DEVICE}.{management_vlan.vlan_id}",
+        ),
     )
 
 

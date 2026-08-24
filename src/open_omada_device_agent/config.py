@@ -79,6 +79,11 @@ LED_OFF_VALUE = os.getenv("OMADA_LED_OFF_VALUE", "0")
 HOSTAPD_UBUS_IFACE = os.getenv("OMADA_HOSTAPD_UBUS_IFACE", "").strip()
 CLIENT_BLOCK_INTERFACE = os.getenv("OMADA_CLIENT_BLOCK_INTERFACE", "").strip()
 
+# Optional management VLAN reconciliation. These must be explicit because the
+# wrong OpenWrt network target can move the AP out of reach.
+MANAGEMENT_VLAN_INTERFACE = os.getenv("OMADA_MANAGEMENT_VLAN_INTERFACE", "").strip()
+MANAGEMENT_VLAN_DEVICE = os.getenv("OMADA_MANAGEMENT_VLAN_DEVICE", "").strip()
+
 # ECSP V2 framing/protocol identity.
 ECSP_VERSION = os.getenv("OMADA_ECSP_VERSION", "2.3.0")
 ECSP_VER_CAP = _int("OMADA_ECSP_VER_CAP", 2)
