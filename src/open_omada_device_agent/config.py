@@ -72,6 +72,9 @@ DHCP_LEASE_FILE = os.getenv("OMADA_DHCP_LEASE_FILE", "/tmp/dhcp.leases").strip()
 LED_BRIGHTNESS_PATH = os.getenv("OMADA_LED_BRIGHTNESS_PATH", "").strip()
 LED_ON_VALUE = os.getenv("OMADA_LED_ON_VALUE", "1")
 LED_OFF_VALUE = os.getenv("OMADA_LED_OFF_VALUE", "0")
+LED_TRIGGER_PATH = os.getenv("OMADA_LED_TRIGGER_PATH", "").strip()
+LED_LOCATE_TRIGGER = os.getenv("OMADA_LED_LOCATE_TRIGGER", "timer")
+LED_DEFAULT_TRIGGER = os.getenv("OMADA_LED_DEFAULT_TRIGGER", "none")
 
 # Optional client operations. Reconnect/deauth uses OpenWrt hostapd ubus
 # objects, while block/unblock uses an nftables bridge table to drop traffic

@@ -62,7 +62,7 @@ def test_sysfs_led_adapter_rejects_led_when_capability_is_disabled(tmp_path):
     assert "LED control requested" in result.error
 
 
-def test_sysfs_led_adapter_rejects_locate_until_trigger_is_implemented(tmp_path):
+def test_sysfs_led_adapter_rejects_locate_without_trigger_path(tmp_path):
     update = parse_config_body({"led": {"locate": True}})
 
     result = SysfsLedAdapter(brightness_path=str(tmp_path / "brightness")).reconcile(
@@ -71,7 +71,36 @@ def test_sysfs_led_adapter_rejects_locate_until_trigger_is_implemented(tmp_path)
     )
 
     assert result.applied is False
-    assert "LED locate reconciliation is not implemented" in result.error
+    assert "LED trigger path is not configured" in result.error
+
+
+def test_sysfs_led_adapter_writes_locate_trigger(tmp_path):
+    trigger = tmp_path / "trigger"
+    update = parse_config_body({"led": {"locate": True}})
+
+    result = SysfsLedAdapter(
+        trigger_path=str(trigger),
+        locate_trigger="timer",
+        default_trigger="none",
+    ).reconcile(update, _caps())
+
+    assert result.applied is True
+    assert result.changed is True
+    assert trigger.read_text(encoding="ascii") == "timer\n"
+
+
+def test_sysfs_led_adapter_restores_default_trigger_when_locate_stops(tmp_path):
+    trigger = tmp_path / "trigger"
+    update = parse_config_body({"led": {"locate": False}})
+
+    result = SysfsLedAdapter(
+        trigger_path=str(trigger),
+        locate_trigger="timer",
+        default_trigger="default-on",
+    ).reconcile(update, _caps())
+
+    assert result.applied is True
+    assert trigger.read_text(encoding="ascii") == "default-on\n"
 
 
 def test_sysfs_led_adapter_rejects_wifi_control_led_until_implemented(tmp_path):

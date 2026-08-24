@@ -27,12 +27,22 @@ class SysfsLedAdapter:
         self,
         *,
         brightness_path: str | None = None,
+        trigger_path: str | None = None,
         on_value: str | None = None,
         off_value: str | None = None,
+        locate_trigger: str | None = None,
+        default_trigger: str | None = None,
     ) -> None:
         self._brightness_path = brightness_path if brightness_path is not None else config.LED_BRIGHTNESS_PATH
+        self._trigger_path = trigger_path if trigger_path is not None else config.LED_TRIGGER_PATH
         self._on_value = config.LED_ON_VALUE if on_value is None else on_value
         self._off_value = config.LED_OFF_VALUE if off_value is None else off_value
+        self._locate_trigger = (
+            config.LED_LOCATE_TRIGGER if locate_trigger is None else locate_trigger
+        )
+        self._default_trigger = (
+            config.LED_DEFAULT_TRIGGER if default_trigger is None else default_trigger
+        )
 
     def validate_update(
         self,
@@ -44,12 +54,15 @@ class SysfsLedAdapter:
             errors.append("WiFi control LED reconciliation is not implemented")
         if update.led is None:
             return tuple(errors)
-        if update.led.locate is not None:
-            errors.append("LED locate reconciliation is not implemented")
-        if update.led.enabled is not None and not capabilities.supports_led_control:
+        if (
+            (update.led.enabled is not None or update.led.locate is not None)
+            and not capabilities.supports_led_control
+        ):
             errors.append("LED control requested but platform capability is disabled")
         if update.led.enabled is not None and not self._brightness_path:
             errors.append("LED brightness path is not configured")
+        if update.led.locate is not None and not self._trigger_path:
+            errors.append("LED trigger path is not configured")
         return tuple(dict.fromkeys(errors))
 
     def reconcile(
@@ -60,14 +73,30 @@ class SysfsLedAdapter:
         errors = self.validate_update(update, capabilities)
         if errors:
             return DeviceCommandResult(applied=False, error="; ".join(errors))
-        if update.led is None or update.led.enabled is None:
+        if update.led is None:
             return DeviceCommandResult(applied=True, changed=False)
-        value = self._on_value if update.led.enabled else self._off_value
-        try:
-            Path(self._brightness_path).write_text(str(value) + "\n", encoding="ascii")
-        except OSError as exc:
-            return DeviceCommandResult(applied=False, error=f"LED brightness write failed: {exc}")
-        return DeviceCommandResult(applied=True, changed=True)
+        changed = False
+        if update.led.enabled is not None:
+            value = self._on_value if update.led.enabled else self._off_value
+            try:
+                Path(self._brightness_path).write_text(str(value) + "\n", encoding="ascii")
+            except OSError as exc:
+                return DeviceCommandResult(
+                    applied=False,
+                    error=f"LED brightness write failed: {exc}",
+                )
+            changed = True
+        if update.led.locate is not None:
+            value = self._locate_trigger if update.led.locate else self._default_trigger
+            try:
+                Path(self._trigger_path).write_text(str(value) + "\n", encoding="ascii")
+            except OSError as exc:
+                return DeviceCommandResult(
+                    applied=False,
+                    error=f"LED trigger write failed: {exc}",
+                )
+            changed = True
+        return DeviceCommandResult(applied=True, changed=changed)
 
 
 class OpenWrtClientControlAdapter:

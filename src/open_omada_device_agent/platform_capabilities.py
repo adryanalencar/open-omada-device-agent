@@ -85,7 +85,10 @@ def detect_platform_capabilities(
         supports_led_control=_feature(
             values,
             "OMADA_CAP_LED",
-            bool(values.get("OMADA_LED_BRIGHTNESS_PATH", "").strip()),
+            bool(
+                values.get("OMADA_LED_BRIGHTNESS_PATH", "").strip()
+                or values.get("OMADA_LED_TRIGGER_PATH", "").strip()
+            ),
         ),
         supports_client_operations=_feature(
             values,

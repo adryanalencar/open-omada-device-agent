@@ -63,6 +63,18 @@ def test_led_capability_is_enabled_by_configured_brightness_path():
     assert caps.supports_led_control is True
 
 
+def test_led_capability_is_enabled_by_configured_trigger_path():
+    caps = detect_platform_capabilities(
+        env={
+            "OMADA_PLATFORM": "generic",
+            "OMADA_LED_TRIGGER_PATH": "/sys/class/leds/status/trigger",
+        },
+        command_exists=lambda _name: None,
+    )
+
+    assert caps.supports_led_control is True
+
+
 def test_client_rate_limit_capability_remains_opt_in():
     caps = detect_platform_capabilities(
         env={
