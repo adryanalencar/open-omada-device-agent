@@ -26,6 +26,19 @@ class PortalClientState(str, Enum):
     BLOCKED = "blocked"
 
 
+@dataclass(frozen=True, repr=False)
+class SecretValue:
+    value: str
+
+    def reveal(self) -> str:
+        return self.value
+
+    def __repr__(self) -> str:
+        return "SecretValue(***)"
+
+    __str__ = __repr__
+
+
 @dataclass(frozen=True)
 class RadioConfig:
     band: RadioBand
@@ -67,6 +80,7 @@ class WirelessSecurity:
     psk_version: int | None = None
     psk_cipher: int | None = None
     psk_configured: bool = False
+    psk_key: SecretValue | None = field(default=None, repr=False)
     radius_profile_id: str | None = None
     radius_auth: Mapping[str, Any] | None = None
     radius_accounting: Mapping[str, Any] | None = None

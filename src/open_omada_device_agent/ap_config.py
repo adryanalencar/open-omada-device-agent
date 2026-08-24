@@ -12,6 +12,7 @@ from .domain import (
     PortalFreePolicy,
     RadioBand,
     RadioConfig,
+    SecretValue,
     VlanAssignment,
     WirelessNetwork,
     WirelessSecurity,
@@ -150,6 +151,11 @@ def _parse_ssid_item(
             psk_version=_optional_int(data.get("pskVer")),
             psk_cipher=_optional_int(data.get("pskCipher")),
             psk_configured=bool(data.get("pskKey")),
+            psk_key=(
+                SecretValue(str(data["pskKey"]))
+                if data.get("pskKey") is not None
+                else None
+            ),
             radius_profile_id=_optional_str(data.get("wpaRadiusProfileId")),
             radius_auth=_optional_mapping(data.get("radiusAuth")),
             radius_accounting=_optional_mapping(data.get("radiusAccounting")),

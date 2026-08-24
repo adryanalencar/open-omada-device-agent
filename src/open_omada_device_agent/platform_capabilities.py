@@ -31,6 +31,7 @@ class PlatformCapabilities:
     supports_wpa3_psk: bool = False
     supports_wpa_enterprise: bool = False
     supports_radius: bool = False
+    supports_ssid_vlan: bool = False
     supports_dynamic_vlan: bool = False
     supports_management_vlan: bool = False
     supports_portal: bool = False
@@ -72,6 +73,7 @@ def detect_platform_capabilities(
         supports_wpa3_psk=_feature(values, "OMADA_CAP_WPA3_PSK", False),
         supports_wpa_enterprise=_feature(values, "OMADA_CAP_WPA_ENTERPRISE", False),
         supports_radius=_feature(values, "OMADA_CAP_RADIUS", False),
+        supports_ssid_vlan=_feature(values, "OMADA_CAP_SSID_VLAN", False),
         supports_dynamic_vlan=_feature(values, "OMADA_CAP_DYNAMIC_VLAN", False),
         supports_management_vlan=_feature(values, "OMADA_CAP_MANAGEMENT_VLAN", False),
         supports_portal=_feature(values, "OMADA_CAP_PORTAL", openwrt and has_nft),
@@ -89,6 +91,7 @@ def capability_summary(capabilities: PlatformCapabilities) -> str:
         "supports_wpa3_psk",
         "supports_wpa_enterprise",
         "supports_radius",
+        "supports_ssid_vlan",
         "supports_dynamic_vlan",
         "supports_management_vlan",
         "supports_portal",
