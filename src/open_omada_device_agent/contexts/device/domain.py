@@ -1,5 +1,5 @@
 """Static device identity and profile contracts."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Protocol
 from ...shared.domain import MacAddress
 
@@ -11,6 +11,18 @@ class DeviceIdentity:
     model_version: str
     hardware_version: str
     firmware_version: str
+
+@dataclass(frozen=True)
+class LedConfig:
+    enabled: bool | None = None
+    locate: bool | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
+
+@dataclass(frozen=True)
+class WifiControlLedConfig:
+    enabled: bool | None = None
+    is_pressed: bool | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
 
 class DeviceProfile(Protocol):
     def identity(self) -> DeviceIdentity: ...

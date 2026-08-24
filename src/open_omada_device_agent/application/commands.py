@@ -2,7 +2,8 @@
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-from ..contexts.clients.domain import ClientAuthConfig, ClientControlOperation, ClientRateConfig, LedConfig, WifiControlLedConfig
+from ..contexts.clients.domain import ClientAuthConfig, ClientControlOperation, ClientRateConfig
+from ..contexts.device.domain import LedConfig, WifiControlLedConfig
 from ..contexts.networking.domain import ManagementVlan
 from ..contexts.portal.domain import PortalFreePolicy
 from ..contexts.wireless.domain import RadioConfig, WirelessNetwork

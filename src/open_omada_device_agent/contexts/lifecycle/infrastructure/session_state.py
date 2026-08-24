@@ -4,25 +4,28 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from ..domain import ManagedState
 
-from .... import config
 from ....shared.domain import MacAddress
 
 log = logging.getLogger("open_omada.state")
 STATE_VERSION = 1
 
 
-def _path(path: str | os.PathLike[str] | None = None) -> Path:
-    return Path(path or config.STATE_FILE).expanduser()
+def _path(path: str | os.PathLike[str]) -> Path:
+    return Path(path).expanduser()
 
 
-def load_state(path: str | os.PathLike[str] | None = None) -> ManagedState | None:
+def load_state(
+    path: str | os.PathLike[str],
+    *,
+    expected_mac: str,
+    expected_controller_host: str,
+) -> ManagedState | None:
     state_path = _path(path)
     try:
         raw: Any = json.loads(state_path.read_text(encoding="utf-8"))
@@ -68,20 +71,21 @@ def load_state(path: str | os.PathLike[str] | None = None) -> ManagedState | Non
             state.version,
         )
         return None
-    if state.mac != MacAddress(config.MAC).value:
+    expected_mac = MacAddress(expected_mac).value
+    if state.mac != expected_mac:
         log.info(
             "Ignoring managed-state file %s because it belongs to MAC %s, not %s",
             state_path,
             state.mac,
-            MacAddress(config.MAC).value,
+            expected_mac,
         )
         return None
-    if state.controller_host != config.CONTROLLER_HOST:
+    if state.controller_host != expected_controller_host:
         log.info(
             "Ignoring managed-state file %s because controller host changed (%s -> %s)",
             state_path,
             state.controller_host,
-            config.CONTROLLER_HOST,
+            expected_controller_host,
         )
         return None
     if not state.controller_id or not (1 <= state.manage_port <= 65535):
@@ -90,40 +94,7 @@ def load_state(path: str | os.PathLike[str] | None = None) -> ManagedState | Non
     return state
 
 
-def save_state(
-    *,
-    controller_id: str,
-    manage_port: int,
-    site_id: str = "",
-    username: str = "",
-    config_version: int | None = None,
-    sequence_id: int | None = None,
-    path: str | os.PathLike[str] | None = None,
-) -> ManagedState:
-    state = ManagedState(
-        version=STATE_VERSION,
-        mac=MacAddress(config.MAC).value,
-        controller_host=config.CONTROLLER_HOST,
-        controller_id=controller_id,
-        manage_port=int(manage_port),
-        site_id=site_id,
-        username=username,
-        config_version=config_version,
-        sequence_id=sequence_id,
-        updated_at=int(time.time()),
-    )
-    state_path = _path(path)
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = state_path.with_name(state_path.name + ".tmp")
-    tmp_path.write_text(
-        json.dumps(asdict(state), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(tmp_path, state_path)
-    return state
-
-
-def clear_state(path: str | os.PathLike[str] | None = None) -> bool:
+def clear_state(path: str | os.PathLike[str]) -> bool:
     state_path = _path(path)
     try:
         state_path.unlink()
@@ -135,14 +106,35 @@ def clear_state(path: str | os.PathLike[str] | None = None) -> bool:
 class JsonSessionStateRepository:
     """JSON-file implementation of the lifecycle persistence port."""
 
-    def __init__(self, path: str | os.PathLike[str] | None = None) -> None:
+    def __init__(self, path: str | os.PathLike[str], *, device_mac: str, controller_host: str) -> None:
         self._path = path
+        self._device_mac = MacAddress(device_mac).value
+        self._controller_host = controller_host
 
     def load(self) -> ManagedState | None:
-        return load_state(self._path)
+        state = load_state(
+            self._path,
+            expected_mac=self._device_mac,
+            expected_controller_host=self._controller_host,
+        )
+        if state is None:
+            return None
+        if state.mac != self._device_mac or state.controller_host != self._controller_host:
+            return None
+        return state
 
-    def save(self, **state: Any) -> ManagedState:
-        return save_state(path=self._path, **state)
+    def save(self, state: ManagedState) -> ManagedState:
+        if state.mac != self._device_mac or state.controller_host != self._controller_host:
+            raise ValueError("managed state identity does not match repository identity")
+        state_path = Path(self._path).expanduser()
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = state_path.with_name(state_path.name + ".tmp")
+        tmp_path.write_text(
+            json.dumps(asdict(state), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(tmp_path, state_path)
+        return state
 
     def clear(self) -> bool:
         return clear_state(self._path)

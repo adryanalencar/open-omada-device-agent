@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass
 
 from open_omada_device_agent.domain import RadioBand, WirelessClientState
+from open_omada_device_agent.contexts.clients.domain import ClientRadioBand
 from open_omada_device_agent.openwrt import CommandResult
 from open_omada_device_agent.platform_capabilities import PlatformCapabilities
 from open_omada_device_agent.telemetry import (
@@ -152,7 +153,7 @@ def test_maps_hostapd_clients_to_wireless_client_state():
     assert len(clients) == 1
     assert clients[0].mac == "aa:bb:cc:dd:ee:ff"
     assert clients[0].ssid == "guest"
-    assert clients[0].radio is RadioBand.TWO_G
+    assert clients[0].radio is ClientRadioBand.TWO_G
     assert clients[0].rssi == -61
     assert clients[0].snr == 35
     assert clients[0].rx_bytes == 1200
@@ -217,7 +218,7 @@ def test_inform_projection_accepts_merged_dhcp_and_hostapd_clients(tmp_path):
     lease_file.write_text("1000 aa:bb:cc:dd:ee:ff 192.0.2.10 phone *\n", encoding="utf-8")
     clients = merge_wireless_client_states(
         clients_from_dhcp_leases(load_dnsmasq_leases(str(lease_file))),
-        (WirelessClientState(mac="aa:bb:cc:dd:ee:ff", ssid="guest", radio=RadioBand.TWO_G, rssi=-59),),
+        (WirelessClientState(mac="aa:bb:cc:dd:ee:ff", ssid="guest", radio=ClientRadioBand.TWO_G, rssi=-59),),
     )
     assembler = InformAssembler(
         device_info=lambda: {"model": "test"},

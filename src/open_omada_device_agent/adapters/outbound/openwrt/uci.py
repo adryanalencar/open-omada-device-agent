@@ -55,15 +55,28 @@ class SubprocessRunner:
 
 
 class OpenWrtUciAdapter:
-    def __init__(self, runner: CommandRunner | None = None) -> None:
+    def __init__(
+        self,
+        runner: CommandRunner | None = None,
+        *,
+        management_vlan_interface: str | None = None,
+        management_vlan_device: str | None = None,
+    ) -> None:
         self._runner = runner or SubprocessRunner()
+        self._management_vlan_interface = management_vlan_interface
+        self._management_vlan_device = management_vlan_device
 
     def reconcile(
         self,
         update: ApplyDeviceConfigurationCommand,
         capabilities: PlatformCapabilities,
     ) -> ReconciliationResult:
-        errors = validate_update(update, capabilities)
+        errors = validate_update(
+            update,
+            capabilities,
+            management_vlan_interface=self._management_vlan_interface,
+            management_vlan_device=self._management_vlan_device,
+        )
         if errors:
             return ReconciliationResult(
                 applied=False,
@@ -71,7 +84,12 @@ class OpenWrtUciAdapter:
                 error="; ".join(errors),
             )
 
-        batch = build_uci_batch(update, capabilities)
+        batch = build_uci_batch(
+            update,
+            capabilities,
+            management_vlan_interface=self._management_vlan_interface,
+            management_vlan_device=self._management_vlan_device,
+        )
         if not batch:
             return ReconciliationResult(applied=True, changed=False)
 
@@ -99,6 +117,9 @@ class OpenWrtUciAdapter:
 def validate_update(
     update: ApplyDeviceConfigurationCommand,
     capabilities: PlatformCapabilities,
+    *,
+    management_vlan_interface: str | None = None,
+    management_vlan_device: str | None = None,
 ) -> tuple[str, ...]:
     errors: list[str] = []
     if (update.radios or update.wlans) and not capabilities.supports_wlan_config:
@@ -160,7 +181,9 @@ def validate_update(
     ):
         if update.management_vlan.vlan_id is None:
             errors.append("enabled management VLAN is missing managementVlanId")
-        if not config.MANAGEMENT_VLAN_INTERFACE or not config.MANAGEMENT_VLAN_DEVICE:
+        interface = config.MANAGEMENT_VLAN_INTERFACE if management_vlan_interface is None else management_vlan_interface
+        device = config.MANAGEMENT_VLAN_DEVICE if management_vlan_device is None else management_vlan_device
+        if not interface or not device:
             errors.append(
                 "OMADA_MANAGEMENT_VLAN_INTERFACE and OMADA_MANAGEMENT_VLAN_DEVICE are required"
             )
@@ -172,6 +195,9 @@ def validate_update(
 def build_uci_batch(
     update: ApplyDeviceConfigurationCommand,
     capabilities: PlatformCapabilities,
+    *,
+    management_vlan_interface: str | None = None,
+    management_vlan_device: str | None = None,
 ) -> tuple[str, ...]:
     lines: list[str] = []
     network_lines: list[str] = []
@@ -185,7 +211,13 @@ def build_uci_batch(
     for vlan_id in vlan_ids:
         network_lines.extend(_ssid_vlan_lines(vlan_id))
     if update.management_vlan is not None:
-        network_lines.extend(_management_vlan_lines(update))
+        network_lines.extend(
+            _management_vlan_lines(
+                update,
+                interface=(config.MANAGEMENT_VLAN_INTERFACE if management_vlan_interface is None else management_vlan_interface),
+                device=(config.MANAGEMENT_VLAN_DEVICE if management_vlan_device is None else management_vlan_device),
+            )
+        )
     if network_lines:
         lines.extend(network_lines)
         lines.append("commit network")
@@ -252,19 +284,24 @@ def _ssid_vlan_lines(vlan_id: int) -> tuple[str, ...]:
     )
 
 
-def _management_vlan_lines(update: ApplyDeviceConfigurationCommand) -> tuple[str, ...]:
+def _management_vlan_lines(
+    update: ApplyDeviceConfigurationCommand,
+    *,
+    interface: str,
+    device: str,
+) -> tuple[str, ...]:
     management_vlan = update.management_vlan
     if management_vlan is None:
         return ()
-    if not config.MANAGEMENT_VLAN_INTERFACE or not config.MANAGEMENT_VLAN_DEVICE:
+    if not interface or not device:
         return ()
     if not management_vlan.enabled:
         return (
             _set(
                 "network",
-                config.MANAGEMENT_VLAN_INTERFACE,
+                interface,
                 "device",
-                config.MANAGEMENT_VLAN_DEVICE,
+                device,
             ),
         )
     if management_vlan.vlan_id is None:
@@ -272,9 +309,9 @@ def _management_vlan_lines(update: ApplyDeviceConfigurationCommand) -> tuple[str
     return (
         _set(
             "network",
-            config.MANAGEMENT_VLAN_INTERFACE,
+            interface,
             "device",
-            f"{config.MANAGEMENT_VLAN_DEVICE}.{management_vlan.vlan_id}",
+            f"{device}.{management_vlan.vlan_id}",
         ),
     )
 

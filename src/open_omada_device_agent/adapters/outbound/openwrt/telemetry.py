@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ....contexts.clients.domain import WirelessClientState
+from ....contexts.clients.domain import ClientRadioBand, WirelessClientState
 from ....contexts.wireless.domain import RadioBand
 from ....shared.domain import MacAddress
 from .uci import CommandRunner, SubprocessRunner
@@ -173,7 +173,7 @@ def hostapd_client_states(
             WirelessClientState(
                 mac=mac,
                 ssid=interface.ssid,
-                radio=interface.band,
+                radio=(ClientRadioBand(interface.band.value) if interface.band is not None else None),
                 rssi=_optional_int(raw_client.get("signal"), raw_client.get("rssi")),
                 snr=_optional_int(raw_client.get("snr")),
                 # Domain names are historical: rx_bytes is serialized as Omada

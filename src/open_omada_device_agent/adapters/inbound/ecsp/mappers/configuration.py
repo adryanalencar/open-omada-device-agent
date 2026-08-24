@@ -7,8 +7,8 @@ from typing import Any
 from .....application.commands import ApplyDeviceConfigurationCommand
 from .....contexts.clients.domain import (
     ClientAuthConfig, ClientControlOperation, ClientRateConfig, ClientRateLimit,
-    LedConfig, WifiControlLedConfig,
 )
+from .....contexts.device.domain import LedConfig, WifiControlLedConfig
 from .....contexts.networking.domain import ManagementVlan, validate_vlan_id
 from .....contexts.portal.domain import PortalFreePolicy
 from .....contexts.wireless.domain import (

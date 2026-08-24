@@ -52,6 +52,11 @@ Application modules define needs as structural `Protocol` ports. Concrete UCI,
 nftables, sysfs, ubus, dnsmasq and JSON-file code is selected only by
 `bootstrap.runtime`.
 
+The CLI snapshots environment variables into an immutable `AgentSettings` and
+passes it to `build_runtime(settings)`. Lifecycle, profiles, repositories, and
+configured OpenWrt adapters receive that snapshot explicitly; they do not read
+the global environment configuration during orchestration.
+
 ## Controller-to-platform path
 
 ```mermaid
@@ -138,7 +143,9 @@ configuration mapping, or domain models for platform command syntax.
 
 Implement `DeviceProfile` and provide identity, static information and a
 conservative components map. Inject it at composition. Lifecycle and ECSP must
-not branch on a model name.
+not branch on a model name. The current runtime uses
+`GenericOpenWrtAccessPointProfile`; replacing it does not require changing
+discovery or adoption.
 
 ### Add an ECSP family
 

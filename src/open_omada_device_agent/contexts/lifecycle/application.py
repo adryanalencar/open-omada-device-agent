@@ -3,6 +3,8 @@ from typing import Any, Protocol
 
 from ...application.commands import ApplyDeviceConfigurationCommand
 from ...application.configuration import ApplyConfigurationResult
+from ...application.settings import AgentSettings
+from ..device.domain import DeviceProfile
 from .domain import ManagedState
 
 class ConfigurationApplier(Protocol):
@@ -13,10 +15,12 @@ class InformProvider(Protocol):
 
 class SessionStateRepository(Protocol):
     def load(self) -> ManagedState | None: ...
-    def save(self, *, controller_id: str, manage_port: int, site_id: str = "", username: str = "", config_version: int | None = None, sequence_id: int | None = None) -> ManagedState: ...
+    def save(self, state: ManagedState) -> ManagedState: ...
     def clear(self) -> bool: ...
 
 class ManagedSessionServices(Protocol):
     configuration: ConfigurationApplier
     inform: InformProvider
     state_repository: SessionStateRepository
+    settings: AgentSettings
+    device_profile: DeviceProfile

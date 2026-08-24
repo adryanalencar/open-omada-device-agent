@@ -84,6 +84,20 @@ def test_context_cannot_import_another_context_infrastructure():
     assert violations == []
 
 
+def test_context_domains_do_not_import_other_context_domains():
+    violations = []
+    for path in PACKAGE.glob("contexts/*/domain.py"):
+        owner = path.parent.name
+        for imported in _imports(path):
+            marker = f"{ROOT}.contexts."
+            if not imported.startswith(marker):
+                continue
+            target = imported.removeprefix(marker).split(".", 1)[0]
+            if target != owner:
+                violations.append(f"{path}: {imported}")
+    assert violations == []
+
+
 def test_outbound_adapters_do_not_import_inbound_ecsp():
     violations = [
         f"{path}: {imported}"

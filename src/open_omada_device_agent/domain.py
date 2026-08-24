@@ -5,9 +5,10 @@ callers while the package migrates incrementally.
 """
 from .contexts.clients.domain import (  # noqa: F401
     ClientAuthConfig, ClientControlOperation, ClientOperationCode,
-    ClientRateConfig, ClientRateLimit, LedConfig, WifiControlLedConfig,
+    ClientRateConfig, ClientRateLimit,
     WirelessClientState,
 )
+from .contexts.device.domain import LedConfig, WifiControlLedConfig  # noqa: F401
 from .contexts.networking.domain import (  # noqa: F401
     DhcpOption82, ManagementVlan, VlanAssignment, validate_vlan_id,
 )

@@ -4,8 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ....contexts.clients.domain import WirelessClientState
-from ....contexts.portal.domain import PortalClientState
+from ....contexts.clients.domain import ClientPortalState, ClientRadioBand, WirelessClientState
 from ....shared.domain import MacAddress
 
 
@@ -60,7 +59,7 @@ def clients_from_dhcp_leases(leases: tuple[DhcpLease, ...]) -> tuple[WirelessCli
             mac=lease.mac,
             ipv4=lease.ipv4,
             hostname=lease.hostname,
-            portal_state=PortalClientState.UNKNOWN,
+            portal_state=ClientPortalState.UNKNOWN,
         )
         for lease in sorted(by_mac.values(), key=lambda item: item.mac)
     )
@@ -86,7 +85,7 @@ def client_stats_payload(clients: tuple[WirelessClientState, ...]) -> list[dict]
             item["snr"] = client.snr
         if client.vlan_id is not None:
             item["vid"] = client.vlan_id
-        if client.portal_state is not PortalClientState.UNKNOWN:
+        if client.portal_state is not ClientPortalState.UNKNOWN:
             item["portalStatus"] = client.portal_state.value
         item["down"] = client.rx_bytes
         item["up"] = client.tx_bytes
@@ -131,7 +130,7 @@ def _merge_client(
         vlan_id=overlay.vlan_id if overlay.vlan_id is not None else base.vlan_id,
         portal_state=(
             overlay.portal_state
-            if overlay.portal_state is not PortalClientState.UNKNOWN
+            if overlay.portal_state is not ClientPortalState.UNKNOWN
             else base.portal_state
         ),
         rx_bytes=overlay.rx_bytes or base.rx_bytes,
@@ -152,8 +151,8 @@ def _merge_client(
     )
 
 
-def _radio_id(radio: object) -> int | str:
-    value = getattr(radio, "value", radio)
+def _radio_id(radio: ClientRadioBand) -> int | str:
+    value = radio.value
     return {
         "2g": 0,
         "5g": 1,

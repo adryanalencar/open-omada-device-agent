@@ -4,6 +4,7 @@ from open_omada_device_agent import config
 from open_omada_device_agent.ecsp import normalize_mac
 from open_omada_device_agent.session_state import clear_state, load_state, save_state
 from open_omada_device_agent.contexts.lifecycle.infrastructure.session_state import JsonSessionStateRepository
+from open_omada_device_agent.contexts.lifecycle.domain import ManagedState
 
 
 def test_managed_state_round_trip_does_not_persist_password(tmp_path):
@@ -40,8 +41,18 @@ def test_clear_managed_state(tmp_path):
 
 
 def test_json_repository_implements_lifecycle_persistence_port(tmp_path):
-    repository = JsonSessionStateRepository(tmp_path / "managed.json")
-    saved = repository.save(controller_id="controller", manage_port=29814)
+    repository = JsonSessionStateRepository(
+        tmp_path / "managed.json",
+        device_mac=config.MAC,
+        controller_host=config.CONTROLLER_HOST,
+    )
+    saved = repository.save(ManagedState(
+        version=1,
+        mac=normalize_mac(config.MAC),
+        controller_host=config.CONTROLLER_HOST,
+        controller_id="controller",
+        manage_port=29814,
+    ))
 
     assert repository.load() == saved
     assert repository.clear() is True

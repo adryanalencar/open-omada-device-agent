@@ -49,7 +49,7 @@ def main() -> None:
     try:
         settings = AgentSettings.from_environment()
         settings.validate()
-        runtime = build_runtime()
+        runtime = build_runtime(settings)
     except RuntimeError as exc:
         log.error("configuration error: %s", exc)
         raise SystemExit(2) from exc

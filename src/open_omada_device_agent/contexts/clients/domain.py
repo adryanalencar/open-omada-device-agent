@@ -1,10 +1,22 @@
 """Unified client state assembled from independent observation sources."""
 from dataclasses import dataclass, field
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Any, Mapping
 from ...shared.domain import MacAddress
-from ..portal.domain import PortalClientState
-from ..wireless.domain import RadioBand
+
+class ClientRadioBand(str, Enum):
+    TWO_G = "2g"
+    FIVE_G = "5g"
+    FIVE_G2 = "5g2"
+    SIX_G = "6g"
+
+class ClientPortalState(str, Enum):
+    UNKNOWN = "unknown"
+    UNAUTHENTICATED = "unauthenticated"
+    AUTHENTICATING = "authenticating"
+    AUTHENTICATED = "authenticated"
+    EXPIRED = "expired"
+    BLOCKED = "blocked"
 
 class ClientOperationCode(IntEnum):
     BLOCK = 0
@@ -59,11 +71,11 @@ class WirelessClientState:
     ipv6: tuple[str, ...] = ()
     hostname: str | None = None
     ssid: str | None = None
-    radio: RadioBand | None = None
+    radio: ClientRadioBand | None = None
     rssi: int | None = None
     snr: int | None = None
     vlan_id: int | None = None
-    portal_state: PortalClientState = PortalClientState.UNKNOWN
+    portal_state: ClientPortalState = ClientPortalState.UNKNOWN
     rx_bytes: int = 0
     tx_bytes: int = 0
     rx_packets: int | None = None
@@ -73,15 +85,3 @@ class WirelessClientState:
     association_time: int | None = None
     def __post_init__(self) -> None:
         object.__setattr__(self, "mac", MacAddress(self.mac).value)
-
-@dataclass(frozen=True)
-class LedConfig:
-    enabled: bool | None = None
-    locate: bool | None = None
-    raw: Mapping[str, Any] = field(default_factory=dict)
-
-@dataclass(frozen=True)
-class WifiControlLedConfig:
-    enabled: bool | None = None
-    is_pressed: bool | None = None
-    raw: Mapping[str, Any] = field(default_factory=dict)

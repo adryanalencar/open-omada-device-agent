@@ -10,9 +10,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from . import config
 from .adapters.inbound.ecsp.mappers.configuration import parse_set_request
-from .capabilities import ap_components_v2
 
 from .adapters.inbound.ecsp.crypto import calculate_md5_mode_auth
 from .application.commands import ApplyDeviceConfigurationCommand
@@ -25,7 +23,9 @@ from .adapters.inbound.ecsp.protocol import (
     recv_tcp_message,
     send_tcp_message,
 )
-from .identity import controller_setting, device_info, device_misc
+from .identity import controller_setting
+from .contexts.device.domain import DeviceProfile
+from .contexts.lifecycle.domain import ManagedState
 from .contexts.lifecycle.application import ManagedSessionServices
 
 
@@ -79,13 +79,13 @@ def _recv_until(sock: socket.socket, expected: MessageType, *, dump_json: bool) 
         )
 
 
-def _preconnect_body(controller_id: str, *, managed_reconnect: bool = False) -> dict[str, Any]:
+def _preconnect_body(controller_id: str, *, profile: DeviceProfile, managed_reconnect: bool = False) -> dict[str, Any]:
     # Controller 6.2's V2 PRE_CONNECT parser explicitly classifies rebuild=1
     # as an already-managed reconnect. rebuild=0 + controllerSetting is the
     # pre-link/adoption path; using that shape after a restart makes
     # manager-core look for transient adopt state and the server closes the
     # manage socket when none exists.
-    info = dict(device_info())
+    info = dict(profile.device_info())
     if managed_reconnect:
         info["isFactory"] = False
 
@@ -94,7 +94,7 @@ def _preconnect_body(controller_id: str, *, managed_reconnect: bool = False) -> 
         "rebuild": 1 if managed_reconnect else 0,
         "secureCap": 0,
         "deviceInfo": info,
-        "deviceMisc": device_misc(),
+        "deviceMisc": profile.device_misc(),
         # rebuild=1 wins the mode classification. Keeping controllerSetting on
         # reconnect also lets manager-core reconstruct controller routing if a
         # MAC -> Omadac mapping is temporarily absent.
@@ -103,7 +103,7 @@ def _preconnect_body(controller_id: str, *, managed_reconnect: bool = False) -> 
 
 
 def _device_negotiation_body(
-    controller_id: str, *, config_version: int = 0
+    controller_id: str, *, profile: DeviceProfile, config_version: int = 0
 ) -> dict[str, Any]:
     """Build the minimal AP V2 adoption response accepted by manager-core.
 
@@ -117,7 +117,7 @@ def _device_negotiation_body(
     managed reconnects report the last persisted version so Controller does not
     unnecessarily provision the same full configuration again.
     """
-    adopt_info = dict(device_info())
+    adopt_info = dict(profile.device_info())
     # These are discovery-only fields.  ApAdoptDeviceInfoV2 stores unknown
     # members, but omitting them makes the negotiation payload match its DTO.
     adopt_info.pop("ip", None)
@@ -129,10 +129,10 @@ def _device_negotiation_body(
         "deviceInfo": adopt_info,
         "controllerSetting": {"controllerId": controller_id},
         "components": {},
-        "components_v2": ap_components_v2(),
+        "components_v2": dict(profile.components_v2()),
         "channelInfo": [],
         "radioCap": [],
-        "deviceMisc": device_misc(),
+        "deviceMisc": profile.device_misc(),
     }
 
 
@@ -326,11 +326,11 @@ def _send_set_response(
         request, current_config_version=current_config_version, errcode=errcode
     )
     response = build_message(
-        mac=config.MAC,
+        mac=services.settings.mac,
         msg_type=MessageType.SET_RESPONSE,
         body=response_body,
-        version=config.ECSP_VERSION,
-        ver_cap=config.ECSP_VER_CAP,
+        version=services.settings.ecsp_version,
+        ver_cap=services.settings.ecsp_ver_cap,
         # Request/response correlation uses the ECSP header seq, exactly as
         # INFORM_RESPONSE mirrors INFORM_REQUEST.seq.
         seq=request_header.get("seq"),
@@ -358,11 +358,11 @@ def _send_inform(
     services: ManagedSessionServices,
 ) -> None:
     inform = build_message(
-        mac=config.MAC,
+        mac=services.settings.mac,
         msg_type=MessageType.INFORM_REQUEST,
         body=_project_inform_body(services=services, need_reply=need_reply, started_at=started_at),
-        version=config.ECSP_VERSION,
-        ver_cap=config.ECSP_VER_CAP,
+        version=services.settings.ecsp_version,
+        ver_cap=services.settings.ecsp_ver_cap,
         seq=seq,
         dest=controller_id,
         timestamp=int(time.time() * 1000),
@@ -377,15 +377,16 @@ def _send_get_response(
     *,
     controller_id: str,
     dump_json: bool,
+    services: ManagedSessionServices,
 ) -> tuple[int, int]:
     request_header = request.get("header") or {}
     response_body = _get_response_body(request, errcode=CONFIG_ERROR)
     response = build_message(
-        mac=config.MAC,
+        mac=services.settings.mac,
         msg_type=MessageType.GET_RESPONSE,
         body=response_body,
-        version=config.ECSP_VERSION,
-        ver_cap=config.ECSP_VER_CAP,
+        version=services.settings.ecsp_version,
+        ver_cap=services.settings.ecsp_ver_cap,
         seq=request_header.get("seq"),
         dest=controller_id,
         timestamp=int(time.time() * 1000),
@@ -402,6 +403,7 @@ def _send_notify_reply(
     *,
     controller_id: str,
     dump_json: bool,
+    services: ManagedSessionServices,
 ) -> bool:
     request_header = request.get("header") or {}
     body = request.get("body") or {}
@@ -419,11 +421,11 @@ def _send_notify_reply(
         else MessageType.NOTIFY_REPLY
     )
     response = build_message(
-        mac=config.MAC,
+        mac=services.settings.mac,
         msg_type=response_type,
         body=_notify_reply_body(request, errcode=CONFIG_ERROR),
-        version=config.ECSP_VERSION,
-        ver_cap=config.ECSP_VER_CAP,
+        version=services.settings.ecsp_version,
+        ver_cap=services.settings.ecsp_ver_cap,
         seq=request_header.get("seq"),
         dest=controller_id,
         timestamp=int(time.time() * 1000),
@@ -440,6 +442,7 @@ def _send_forget_response(
     *,
     controller_id: str,
     dump_json: bool,
+    services: ManagedSessionServices,
 ) -> MessageType:
     request_type = int((request.get("header") or {}).get("type", -1))
     if request_type == int(MessageType.FORGET_REQUEST_NO_RESET):
@@ -450,11 +453,11 @@ def _send_forget_response(
         raise RuntimeError(f"cannot build forget response for message type {request_type}")
 
     response = build_message(
-        mac=config.MAC,
+        mac=services.settings.mac,
         msg_type=response_type,
         body={},
-        version=config.ECSP_VERSION,
-        ver_cap=config.ECSP_VER_CAP,
+        version=services.settings.ecsp_version,
+        ver_cap=services.settings.ecsp_ver_cap,
         seq=None,
         dest=controller_id,
         timestamp=int(time.time() * 1000),
@@ -488,18 +491,18 @@ def run_v2_adoption(
     )
     raw_sock = socket.create_connection(
         (controller_host, adopt_port),
-        timeout=config.TCP_TIMEOUT,
+        timeout=services.settings.tcp_timeout,
     )
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.maximum_version = ssl.TLSVersion.TLSv1_2
 
-    if config.TLS_VERIFY:
+    if services.settings.tls_verify:
         ctx.check_hostname = True
         ctx.verify_mode = ssl.CERT_REQUIRED
-        if config.TLS_CA_FILE:
-            ctx.load_verify_locations(cafile=config.TLS_CA_FILE)
+        if services.settings.tls_ca_file:
+            ctx.load_verify_locations(cafile=services.settings.tls_ca_file)
         else:
             ctx.load_default_certs()
     else:
@@ -512,18 +515,18 @@ def run_v2_adoption(
         raw_sock,
         server_hostname=controller_host,
     )
-    sock.settimeout(config.TCP_TIMEOUT)
+    sock.settimeout(services.settings.tcp_timeout)
 
     seq = 1
     started_at = time.monotonic()
     managed_ready = False
     try:
         preconnect = build_message(
-            mac=config.MAC,
+            mac=services.settings.mac,
             msg_type=MessageType.PRE_CONNECT_INFO,
-            body=_preconnect_body(controller_id, managed_reconnect=managed_reconnect),
-            version=config.ECSP_VERSION,
-            ver_cap=config.ECSP_VER_CAP,
+            body=_preconnect_body(controller_id, profile=services.device_profile, managed_reconnect=managed_reconnect),
+            version=services.settings.ecsp_version,
+            ver_cap=services.settings.ecsp_ver_cap,
             seq=seq,
             dest=controller_id,
             timestamp=int(time.time() * 1000),
@@ -544,34 +547,34 @@ def run_v2_adoption(
                 "PRE_CONNECT_INFO_RESPONSE has no usable randomKeyForDeviceVerify"
             )
 
-        username = config.DEVICE_USERNAME or body.get("username") or ""
+        username = services.settings.device_username or body.get("username") or ""
         if not username:
             raise RuntimeError(
                 "controller did not return a username; set OMADA_DEVICE_USERNAME to the site's Device Account username"
             )
-        if not config.DEVICE_PASSWORD:
+        if not services.settings.device_password:
             raise RuntimeError(
                 "PRE_CONNECT succeeded, but OMADA_DEVICE_PASSWORD is empty. "
                 "Set it locally to the site's Device Account password and retry adoption."
             )
-        if config.DEVICE_CIPHER_TYPE != int(CipherType.MD5):
+        if services.settings.device_cipher_type != int(CipherType.MD5):
             raise RuntimeError(
                 "this implementation currently supports only the verified legacy MD5 branch (OMADA_DEVICE_CIPHER_TYPE=5)"
             )
 
         random_system_key = str(uuid.uuid4())
-        device_auth = calculate_md5_mode_auth(username, config.DEVICE_PASSWORD, random_device_key)
+        device_auth = calculate_md5_mode_auth(username, services.settings.device_password, random_device_key)
         seq += 1
         verify = build_message(
-            mac=config.MAC,
+            mac=services.settings.mac,
             msg_type=MessageType.DEVICE_VERIFY_INFO,
             body={
                 "auth": device_auth,
                 "randomKeyForSystemVerify": random_system_key,
                 "cipherType": int(CipherType.MD5),
             },
-            version=config.ECSP_VERSION,
-            ver_cap=config.ECSP_VER_CAP,
+            version=services.settings.ecsp_version,
+            ver_cap=services.settings.ecsp_ver_cap,
             seq=seq,
             dest=controller_id,
             timestamp=int(time.time() * 1000),
@@ -591,7 +594,7 @@ def run_v2_adoption(
         verify_body = verify_response.get("body") or {}
         controller_auth = verify_body.get("auth")
         expected_controller_auth = calculate_md5_mode_auth(
-            username, config.DEVICE_PASSWORD, random_system_key
+            username, services.settings.device_password, random_system_key
         )
         if not isinstance(controller_auth, str):
             raise RuntimeError("DEVICE_VERIFY_RESPONSE succeeded but contains no legacy auth")
@@ -603,11 +606,11 @@ def run_v2_adoption(
 
         seq += 1
         system_result = build_message(
-            mac=config.MAC,
+            mac=services.settings.mac,
             msg_type=MessageType.SYSTEM_VERIFY_RESULT,
             body={},
-            version=config.ECSP_VERSION,
-            ver_cap=config.ECSP_VER_CAP,
+            version=services.settings.ecsp_version,
+            ver_cap=services.settings.ecsp_ver_cap,
             seq=seq,
             dest=controller_id,
             timestamp=int(time.time() * 1000),
@@ -631,7 +634,7 @@ def run_v2_adoption(
             else 0
         )
         negotiation_body = _device_negotiation_body(
-            controller_id, config_version=negotiation_config_version
+            controller_id, profile=services.device_profile, config_version=negotiation_config_version
         )
         log.info(
             "Advertising %d ECSP V2 AP components at configVersion=%d: %s",
@@ -640,11 +643,11 @@ def run_v2_adoption(
             ",".join(sorted(negotiation_body["components_v2"])),
         )
         negotiation = build_message(
-            mac=config.MAC,
+            mac=services.settings.mac,
             msg_type=MessageType.DEVICE_NEGOTIATION,
             body=negotiation_body,
-            version=config.ECSP_VERSION,
-            ver_cap=config.ECSP_VER_CAP,
+            version=services.settings.ecsp_version,
+            ver_cap=services.settings.ecsp_ver_cap,
             seq=seq,
             dest=controller_id,
             timestamp=int(time.time() * 1000),
@@ -675,10 +678,10 @@ def run_v2_adoption(
 
         seq += 1
         init_sync_result = build_message(
-            mac=config.MAC,
+            mac=services.settings.mac,
             msg_type=MessageType.INIT_SYNC_RESULT,
-            version=config.ECSP_VERSION,
-            ver_cap=config.ECSP_VER_CAP,
+            version=services.settings.ecsp_version,
+            ver_cap=services.settings.ecsp_ver_cap,
             seq=seq,
             dest=controller_id,
             timestamp=int(time.time() * 1000),
@@ -708,17 +711,21 @@ def run_v2_adoption(
                 config_version = int(system_body["configVersion"])
             if system_body.get("sequenceId") is not None:
                 sequence_id = int(system_body["sequenceId"])
-        saved = services.state_repository.save(
+        saved = services.state_repository.save(ManagedState(
+            version=1,
+            mac=services.settings.mac,
+            controller_host=controller_host,
             controller_id=controller_id,
             manage_port=adopt_port,
-            site_id=config.SITE_ID,
+            site_id=services.settings.site_id,
             username=username,
             config_version=config_version,
             sequence_id=sequence_id,
-        )
+            updated_at=int(time.time()),
+        ))
         log.info(
             "Managed reconnect state saved to %s (controller=%s:%d, mac=%s); no password is persisted",
-            config.STATE_FILE,
+            services.settings.state_file,
             saved.controller_host,
             saved.manage_port,
             saved.mac,
@@ -738,7 +745,7 @@ def run_v2_adoption(
             dump_json=dump_json,
             services=services,
         )
-        next_inform_at = time.monotonic() + max(0.5, config.INFORM_INTERVAL)
+        next_inform_at = time.monotonic() + max(0.5, services.settings.inform_interval)
 
         # The next phase is the managed-device protocol (SET/GET/INFORM/NOTIFY).
         # SET_RESPONSE is grounded in the controller's BaseConfigResponse
@@ -758,7 +765,7 @@ def run_v2_adoption(
                     dump_json=dump_json,
                     services=services,
                 )
-                next_inform_at = now + max(0.5, config.INFORM_INTERVAL)
+                next_inform_at = now + max(0.5, services.settings.inform_interval)
 
             try:
                 message, _ = recv_tcp_message(sock)
@@ -786,14 +793,18 @@ def run_v2_adoption(
                     continue
                 config_version = applied_config_version
                 sequence_id = applied_sequence_id
-                services.state_repository.save(
+                services.state_repository.save(ManagedState(
+                    version=1,
+                    mac=services.settings.mac,
+                    controller_host=controller_host,
                     controller_id=controller_id,
                     manage_port=adopt_port,
-                    site_id=config.SITE_ID,
+                    site_id=services.settings.site_id,
                     username=username,
                     config_version=applied_config_version,
                     sequence_id=applied_sequence_id,
-                )
+                    updated_at=int(time.time()),
+                ))
                 log.info(
                     "Applied controller config envelope: configVersion=%d sequenceId=%d; managed state updated",
                     applied_config_version,
@@ -820,6 +831,7 @@ def run_v2_adoption(
                     message,
                     controller_id=controller_id,
                     dump_json=dump_json,
+                    services=services,
                 )
                 if replied:
                     log.error("Controller NOTIFY_REQUEST subject is unsupported locally")
@@ -832,6 +844,7 @@ def run_v2_adoption(
                     message,
                     controller_id=controller_id,
                     dump_json=dump_json,
+                    services=services,
                 )
                 cleared = services.state_repository.clear()
                 log.warning(
