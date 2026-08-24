@@ -13,6 +13,7 @@ from typing import Any
 from . import config
 from .ap_config import parse_set_request
 from .capabilities import ap_components_v2
+from .client_tracking import client_stats_payload, clients_from_dhcp_leases, load_dnsmasq_leases
 from .crypto import calculate_md5_mode_auth
 from .domain import AccessPointConfigUpdate
 from .ecsp import (
@@ -150,7 +151,7 @@ def _inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
     info = dict(device_info())
     info["isFactory"] = False
     info["upTime"] = str(max(0, int(time.monotonic() - started_at)))
-    return {
+    body = {
         "needReply": 1 if need_reply else 0,
         "deviceInfo": info,
         # Wired APs are expected to report lanInfo.  Without it Controller 6.2
@@ -163,6 +164,10 @@ def _inform_body(*, need_reply: bool, started_at: float) -> dict[str, Any]:
             "port": config.LAN_PORT,
         },
     }
+    clients = clients_from_dhcp_leases(load_dnsmasq_leases(config.DHCP_LEASE_FILE))
+    if clients:
+        body["clients"] = client_stats_payload(clients)
+    return body
 
 
 def _set_response_body(

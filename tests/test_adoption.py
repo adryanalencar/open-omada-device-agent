@@ -1,5 +1,6 @@
 import time
 
+from open_omada_device_agent import config
 from open_omada_device_agent.adoption import (
     CONFIG_ERROR,
     _describe_config_update,
@@ -46,6 +47,21 @@ def test_post_adoption_inform_is_not_factory_and_requests_reply_when_asked():
     assert body["deviceInfo"]["isFactory"] is False
     assert int(body["deviceInfo"]["upTime"]) >= 4
     assert body["deviceInfo"]["model"]
+
+
+def test_inform_includes_real_dhcp_lease_clients_when_available(tmp_path, monkeypatch):
+    leases = tmp_path / "dhcp.leases"
+    leases.write_text(
+        "1000 aa:bb:cc:dd:ee:ff 192.0.2.10 phone *\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config, "DHCP_LEASE_FILE", str(leases))
+
+    body = _inform_body(need_reply=False, started_at=time.monotonic())
+
+    assert body["clients"][0]["mac"] == "aa:bb:cc:dd:ee:ff"
+    assert body["clients"][0]["ip"] == "192.0.2.10"
+    assert body["clients"][0]["deviceName"] == "phone"
 
 
 def test_managed_reconnect_preconnect_uses_v2_rebuild_shape():

@@ -62,6 +62,11 @@ LAN_RATE = _float("OMADA_LAN_RATE", 100.0)
 LAN_DUPLEX = _int("OMADA_LAN_DUPLEX", 1)
 LAN_PORT = os.getenv("OMADA_LAN_PORT", "LAN")
 
+# Client tracking. In AP mode this is an observation source, not an assertion
+# that the AP is the DHCP server. If the file does not exist, informs simply
+# omit client entries.
+DHCP_LEASE_FILE = os.getenv("OMADA_DHCP_LEASE_FILE", "/tmp/dhcp.leases").strip()
+
 # ECSP V2 framing/protocol identity.
 ECSP_VERSION = os.getenv("OMADA_ECSP_VERSION", "2.3.0")
 ECSP_VER_CAP = _int("OMADA_ECSP_VER_CAP", 2)
