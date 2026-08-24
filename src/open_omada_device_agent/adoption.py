@@ -11,8 +11,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import config
+from .ap_config import parse_set_request
 from .capabilities import ap_components_v2
 from .crypto import calculate_md5_mode_auth
+from .domain import AccessPointConfigUpdate
 from .ecsp import (
     CipherType,
     MessageType,
@@ -211,6 +213,35 @@ def _set_response_body(
     }
 
 
+def _describe_config_update(update: AccessPointConfigUpdate) -> str:
+    parts = [
+        f"sequenceId={update.sequence_id}",
+        f"configVersion={update.config_version}",
+        f"configVersionInc={update.config_version_inc}",
+    ]
+    if update.radios:
+        bands = ",".join(sorted(radio.band.value for radio in update.radios))
+        parts.append(f"radios={len(update.radios)}[{bands}]")
+    if update.wlans:
+        bands = ",".join(sorted(wlan.band.value for wlan in update.wlans))
+        parts.append(f"wlans={len(update.wlans)}[{bands}]")
+    if update.management_vlan is not None:
+        parts.append(
+            "managementVlan="
+            f"{'on' if update.management_vlan.enabled else 'off'}:"
+            f"{update.management_vlan.vlan_id}"
+        )
+    if update.portal_free_policy is not None:
+        parts.append(
+            "portalFreePolicy="
+            f"l2:{len(update.portal_free_policy.layer2_rules)},"
+            f"url:{len(update.portal_free_policy.url_rules)}"
+        )
+    if update.unhandled_keys:
+        parts.append(f"unhandled={','.join(update.unhandled_keys)}")
+    return " ".join(parts)
+
+
 def _send_set_response(
     sock: socket.socket,
     request: dict[str, Any],
@@ -221,6 +252,16 @@ def _send_set_response(
 ) -> tuple[int, int]:
     """Acknowledge a controller SET_REQUEST and return version/sequence."""
     request_header = request.get("header") or {}
+    try:
+        update = parse_set_request(request)
+        log.info("Parsed AP SET_REQUEST domains: %s", _describe_config_update(update))
+    except ValueError as exc:
+        # Keep the current conservative behavior: until the adapter/reconciler
+        # is enabled, malformed AP subdocuments are logged but the envelope ACK
+        # path still follows BaseConfigResponse so existing adoption labs keep
+        # working. The apply phase will convert validation failures into device
+        # config errors once those components are advertised.
+        log.warning("Could not parse AP config domains in SET_REQUEST: %s", exc)
     response_body = _set_response_body(
         request, current_config_version=current_config_version
     )
