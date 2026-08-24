@@ -7,12 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import config
-from .domain import AccessPointConfigUpdate, ClientOperationCode
+from .domain import AccessPointConfigUpdate, ClientOperationCode, ClientRateConfig
 from .ecsp import normalize_mac
 from .openwrt import CommandRunner, SubprocessRunner
 from .platform_capabilities import PlatformCapabilities
 
 NFT_CLIENT_TABLE = "openomada_clients"
+NFT_CLIENT_RATE_TABLE = "openomada_client_rates"
 
 
 @dataclass(frozen=True)
@@ -106,6 +107,7 @@ class OpenWrtClientControlAdapter:
         *,
         hostapd_iface: str | None = None,
         block_interface: str | None = None,
+        rate_limit_interface: str | None = None,
     ) -> None:
         self._runner = runner or SubprocessRunner()
         self._hostapd_iface = (
@@ -113,6 +115,11 @@ class OpenWrtClientControlAdapter:
         )
         self._block_interface = (
             config.CLIENT_BLOCK_INTERFACE if block_interface is None else block_interface
+        )
+        self._rate_limit_interface = (
+            config.CLIENT_RATE_LIMIT_INTERFACE
+            if rate_limit_interface is None
+            else rate_limit_interface
         )
 
     def validate_update(
@@ -124,7 +131,23 @@ class OpenWrtClientControlAdapter:
         if update.client_configs:
             errors.append("clientConfig unauth reconciliation is not implemented")
         if update.client_rate_config is not None:
-            errors.append("client rate-limit reconciliation is not implemented")
+            if not capabilities.supports_client_rate_limits:
+                errors.append("client rate-limit requested but platform capability is disabled")
+            if not capabilities.has_nft:
+                errors.append("client rate-limit requires nft")
+            if not self._rate_limit_interface:
+                errors.append("OMADA_CLIENT_RATE_LIMIT_INTERFACE is required")
+            elif not _valid_interface(self._rate_limit_interface):
+                errors.append(f"invalid client rate-limit interface: {self._rate_limit_interface!r}")
+            for limit in update.client_rate_config.limits:
+                try:
+                    normalize_mac(limit.mac)
+                except ValueError:
+                    errors.append(f"invalid client rate-limit MAC: {limit.mac!r}")
+                if limit.down is not None and limit.down < 0:
+                    errors.append(f"negative client down rate-limit for {limit.mac}")
+                if limit.up is not None and limit.up < 0:
+                    errors.append(f"negative client up rate-limit for {limit.mac}")
         if not update.client_operations:
             return tuple(errors)
         if not capabilities.supports_client_operations:
@@ -182,10 +205,15 @@ class OpenWrtClientControlAdapter:
         errors = self.validate_update(update, capabilities)
         if errors:
             return DeviceCommandResult(applied=False, error="; ".join(errors))
-        if not update.client_operations:
+        if not update.client_operations and update.client_rate_config is None:
             return DeviceCommandResult(applied=True, changed=False)
 
         changed = False
+        if update.client_rate_config is not None:
+            result = self._apply_client_rate_limits(update.client_rate_config)
+            if not result.applied:
+                return result
+            changed = changed or result.changed
         for operation in update.client_operations:
             code = operation.operation_code
             mac = normalize_mac(operation.client_mac)
@@ -204,6 +232,40 @@ class OpenWrtClientControlAdapter:
                 return result
             changed = changed or result.changed
         return DeviceCommandResult(applied=True, changed=changed)
+
+    def _apply_client_rate_limits(
+        self,
+        rate_config: ClientRateConfig,
+    ) -> DeviceCommandResult:
+        existing = self._runner.run(
+            ["nft", "list", "table", "bridge", NFT_CLIENT_RATE_TABLE]
+        )
+        if existing.returncode == 0:
+            deleted = self._runner.run(
+                ["nft", "delete", "table", "bridge", NFT_CLIENT_RATE_TABLE]
+            )
+            if deleted.returncode != 0:
+                return DeviceCommandResult(
+                    applied=False,
+                    error=(
+                        deleted.stderr
+                        or deleted.stdout
+                        or "nft client rate table delete failed"
+                    ).strip(),
+                )
+        loaded = self._runner.run(
+            ["nft", "-f", "-"],
+            input_text=build_client_rate_limit_nftables_rules(
+                self._rate_limit_interface,
+                rate_config,
+            ),
+        )
+        if loaded.returncode != 0:
+            return DeviceCommandResult(
+                applied=False,
+                error=(loaded.stderr or loaded.stdout or "nft client rate load failed").strip(),
+            )
+        return DeviceCommandResult(applied=True, changed=True)
 
     def _disconnect_client(self, mac: str) -> DeviceCommandResult:
         payload = json.dumps(
@@ -279,6 +341,37 @@ def build_client_block_nftables_rules(interface: str) -> str:
             "}",
         )
     ) + "\n"
+
+
+def build_client_rate_limit_nftables_rules(
+    interface: str,
+    rate_config: ClientRateConfig,
+) -> str:
+    if not _valid_interface(interface):
+        raise ValueError(f"invalid client rate-limit interface: {interface!r}")
+    lines = [
+        f"table bridge {NFT_CLIENT_RATE_TABLE} {{",
+        "  chain forward {",
+        "    type filter hook forward priority -299; policy accept;",
+    ]
+    for limit in rate_config.limits:
+        mac = normalize_mac(limit.mac)
+        if limit.up and limit.up > 0:
+            lines.append(
+                f"    iifname \"{interface}\" ether saddr {mac} "
+                f"limit rate over {_kbps_to_bytes_per_second(limit.up)} bytes/second drop"
+            )
+        if limit.down and limit.down > 0:
+            lines.append(
+                f"    oifname \"{interface}\" ether daddr {mac} "
+                f"limit rate over {_kbps_to_bytes_per_second(limit.down)} bytes/second drop"
+            )
+    lines.extend(("  }", "}"))
+    return "\n".join(lines) + "\n"
+
+
+def _kbps_to_bytes_per_second(kbps: int) -> int:
+    return max(1, int(kbps) * 1000 // 8)
 
 
 def _is_missing_nft_element(result: object) -> bool:

@@ -5,6 +5,7 @@ from open_omada_device_agent.device_commands import (
     OpenWrtClientControlAdapter,
     SysfsLedAdapter,
     build_client_block_nftables_rules,
+    build_client_rate_limit_nftables_rules,
 )
 from open_omada_device_agent.openwrt import CommandResult
 from open_omada_device_agent.platform_capabilities import PlatformCapabilities
@@ -26,12 +27,15 @@ def _caps(**overrides):
 class RecordingRunner:
     calls: list[tuple[tuple[str, ...], str | None]] = field(default_factory=list)
     client_table_exists: bool = True
+    client_rate_table_exists: bool = True
 
     def run(self, args, *, input_text=None):
         command = tuple(args)
         self.calls.append((command, input_text))
         if command == ("nft", "list", "table", "bridge", "openomada_clients"):
             return CommandResult(returncode=0 if self.client_table_exists else 1)
+        if command == ("nft", "list", "table", "bridge", "openomada_client_rates"):
+            return CommandResult(returncode=0 if self.client_rate_table_exists else 1)
         return CommandResult(returncode=0)
 
 
@@ -191,7 +195,50 @@ def test_openwrt_client_control_rejects_lock_to_ap_operation():
     assert "LOCK_TO_AP_BLOCK" in result.error
 
 
-def test_openwrt_client_control_rejects_rate_limits_until_adapter_exists():
+def test_openwrt_client_control_applies_rate_limits_with_bridge_nftables():
+    update = parse_config_body(
+        {
+            "clientRateConfig": {
+                "action": 0,
+                "clientRateLimit": [{"mac": "aa:bb:cc:dd:ee:ff", "down": 1024, "up": 512}],
+            }
+        }
+    )
+    runner = RecordingRunner(client_rate_table_exists=True)
+
+    result = OpenWrtClientControlAdapter(
+        runner,
+        hostapd_iface="wlan0",
+        block_interface="br-guest",
+        rate_limit_interface="wlan0",
+    ).reconcile(update, _caps(supports_client_rate_limits=True))
+
+    assert result.applied is True
+    assert result.changed is True
+    assert runner.calls[0][0] == (
+        "nft",
+        "list",
+        "table",
+        "bridge",
+        "openomada_client_rates",
+    )
+    assert runner.calls[1][0] == (
+        "nft",
+        "delete",
+        "table",
+        "bridge",
+        "openomada_client_rates",
+    )
+    assert runner.calls[2][0] == ("nft", "-f", "-")
+    assert "ether saddr aa:bb:cc:dd:ee:ff limit rate over 64000 bytes/second drop" in (
+        runner.calls[2][1] or ""
+    )
+    assert "ether daddr aa:bb:cc:dd:ee:ff limit rate over 128000 bytes/second drop" in (
+        runner.calls[2][1] or ""
+    )
+
+
+def test_openwrt_client_control_rejects_rate_limits_when_capability_is_disabled():
     update = parse_config_body(
         {
             "clientRateConfig": {
@@ -205,13 +252,29 @@ def test_openwrt_client_control_rejects_rate_limits_until_adapter_exists():
         RecordingRunner(),
         hostapd_iface="wlan0",
         block_interface="br-guest",
-    ).reconcile(update, _caps())
+        rate_limit_interface="wlan0",
+    ).reconcile(update, _caps(supports_client_rate_limits=False))
 
     assert result.applied is False
-    assert "client rate-limit reconciliation is not implemented" in result.error
+    assert "client rate-limit requested" in result.error
 
 
 def test_build_client_block_nftables_rules_validates_interface():
     rules = build_client_block_nftables_rules("br-guest")
 
     assert "iifname \"br-guest\" ether saddr @blocked_macs drop" in rules
+
+
+def test_build_client_rate_limit_nftables_rules_converts_kbps_to_bytes_per_second():
+    update = parse_config_body(
+        {
+            "clientRateConfig": {
+                "clientRateLimit": [{"mac": "aa:bb:cc:dd:ee:ff", "down": 8, "up": 16}]
+            }
+        }
+    )
+
+    rules = build_client_rate_limit_nftables_rules("wlan0", update.client_rate_config)
+
+    assert "limit rate over 2000 bytes/second drop" in rules
+    assert "limit rate over 1000 bytes/second drop" in rules

@@ -81,6 +81,7 @@ LED_DEFAULT_TRIGGER = os.getenv("OMADA_LED_DEFAULT_TRIGGER", "none")
 # from the client MAC after association.
 HOSTAPD_UBUS_IFACE = os.getenv("OMADA_HOSTAPD_UBUS_IFACE", "").strip()
 CLIENT_BLOCK_INTERFACE = os.getenv("OMADA_CLIENT_BLOCK_INTERFACE", "").strip()
+CLIENT_RATE_LIMIT_INTERFACE = os.getenv("OMADA_CLIENT_RATE_LIMIT_INTERFACE", "").strip()
 
 # Optional management VLAN reconciliation. These must be explicit because the
 # wrong OpenWrt network target can move the AP out of reach.
