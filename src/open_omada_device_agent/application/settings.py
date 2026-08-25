@@ -43,6 +43,7 @@ class AgentSettings:
     portal_redirect_port: int
     management_vlan_interface: str
     management_vlan_device: str
+    lab_ack_control_plane_config: bool
     ecsp_version: str
     ecsp_ver_cap: int
     controller_id: str

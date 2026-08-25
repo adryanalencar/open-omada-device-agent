@@ -68,6 +68,7 @@ def build_runtime(settings: AgentSettings) -> AgentRuntime:
                     rate_limit_interface=settings.client_rate_limit_interface,
                 ),
             ),
+            allow_ack_only_config=settings.lab_ack_control_plane_config,
         ),
         inform=InformAssembler(
             device_info=profile.device_info,

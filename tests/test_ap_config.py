@@ -166,6 +166,40 @@ def test_parse_client_operation_requires_client_mac():
         parse_config_body({"clientOperation": [{"operation": 2}]})
 
 
+def test_parse_initial_controller_defaults_as_ack_only_config():
+    update = parse_config_body(
+        {
+            "lanSetting": {
+                "connType": 1,
+                "useFallBack": True,
+                "fallBackIp": "192.168.0.254",
+                "fallBackMask": "255.255.255.0",
+            },
+            "macFilterGlobal": {"enable": True},
+            "schedulerGlobal": {"enable": True, "mode": 0},
+            "logSetting": {"mailEnable": False, "logServerEnable": False},
+            "ssh": {"sshenable": "on", "sshserverPort": 22, "layer3Access": True},
+            "ipGroup": {"ipGroups": [{"ipSubnets": ["0.0.0.0/0"]}]},
+            "ipv6Group": {"ipv6Groups": [{"ipv6Subnets": ["::/0"]}]},
+            "snmp": {"v1v2cEnable": 0, "v3Enable": 0},
+            "lldp": {"enable": 1},
+        }
+    )
+
+    assert update.unhandled_keys == ()
+    assert update.ack_only_keys == (
+        "ipGroup",
+        "ipv6Group",
+        "lanSetting",
+        "lldp",
+        "logSetting",
+        "macFilterGlobal",
+        "schedulerGlobal",
+        "snmp",
+        "ssh",
+    )
+
+
 def test_validate_ssid_rejects_names_over_32_bytes():
     with pytest.raises(ValueError, match="32 UTF-8 bytes"):
         validate_ssid_name("x" * 33)

@@ -93,6 +93,12 @@ PORTAL_REDIRECT_PORT = _int("OMADA_PORTAL_REDIRECT_PORT", 8080)
 MANAGEMENT_VLAN_INTERFACE = os.getenv("OMADA_MANAGEMENT_VLAN_INTERFACE", "").strip()
 MANAGEMENT_VLAN_DEVICE = os.getenv("OMADA_MANAGEMENT_VLAN_DEVICE", "").strip()
 
+# Lab/research compatibility. When enabled, known controller-side/default
+# configuration families that currently have no local OpenWrt side effect are
+# acknowledged instead of failing the entire SET_REQUEST batch. Keep disabled
+# outside controlled protocol labs.
+LAB_ACK_CONTROL_PLANE_CONFIG = _bool("OMADA_LAB_ACK_CONTROL_PLANE_CONFIG", False)
+
 # ECSP V2 framing/protocol identity.
 ECSP_VERSION = os.getenv("OMADA_ECSP_VERSION", "2.3.0")
 ECSP_VER_CAP = _int("OMADA_ECSP_VER_CAP", 2)

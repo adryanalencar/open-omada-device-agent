@@ -34,7 +34,19 @@ SSID_KEYS: dict[str, RadioBand] = {
 }
 
 KNOWN_COMMON_KEYS = {"sequenceId", "configVersion", "configVersionInc"}
-KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | {
+ACK_ONLY_CONFIG_KEYS = {
+    "ipGroup",
+    "ipv6Group",
+    "lanSetting",
+    "lldp",
+    "logSetting",
+    "macFilterGlobal",
+    "schedulerGlobal",
+    "snmp",
+    "ssh",
+}
+
+KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | ACK_ONLY_CONFIG_KEYS | {
     "clientConfig",
     "clientOperation",
     "clientOperation_cmd",
@@ -125,6 +137,7 @@ def parse_config_body(body: Mapping[str, Any]) -> AccessPointConfigUpdate:
         client_configs=client_configs,
         client_operations=tuple(client_operations),
         client_rate_config=client_rate_config,
+        ack_only_keys=tuple(sorted(key for key in body if key in ACK_ONLY_CONFIG_KEYS)),
         unhandled_keys=unhandled,
         raw_body=dict(body),
     )

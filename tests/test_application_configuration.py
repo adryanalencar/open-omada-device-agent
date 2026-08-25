@@ -66,3 +66,43 @@ def test_apply_configuration_stops_after_failed_adapter():
     assert result.applied is False
     assert result.error == "platform rejected update"
     assert later.calls == []
+
+
+def test_apply_configuration_requires_lab_flag_for_ack_only_keys():
+    use_case = ApplyDeviceConfiguration(
+        capability_detector=object,
+        platform_ports=(),
+        command_ports=(),
+    )
+
+    result = use_case.execute(
+        AccessPointConfigUpdate(
+            sequence_id=1,
+            config_version=2,
+            config_version_inc=None,
+            ack_only_keys=("ssh",),
+        )
+    )
+
+    assert result.applied is False
+    assert "OMADA_LAB_ACK_CONTROL_PLANE_CONFIG" in result.error
+
+
+def test_apply_configuration_accepts_ack_only_keys_when_lab_flag_is_enabled():
+    use_case = ApplyDeviceConfiguration(
+        capability_detector=object,
+        platform_ports=(),
+        command_ports=(),
+        allow_ack_only_config=True,
+    )
+
+    result = use_case.execute(
+        AccessPointConfigUpdate(
+            sequence_id=1,
+            config_version=2,
+            config_version_inc=None,
+            ack_only_keys=("ssh",),
+        )
+    )
+
+    assert result.applied is True
