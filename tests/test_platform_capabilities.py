@@ -25,6 +25,7 @@ def test_detects_openwrt_wlan_capability_from_tools():
     assert caps.has_ubus is True
     assert caps.has_nft is True
     assert caps.has_dnsmasq is False
+    assert caps.has_opennds is False
     assert caps.radio_bands == (RadioBand.TWO_G, RadioBand.FIVE_G)
     assert caps.max_ssids == 8
     assert caps.supports_wlan_config is True
@@ -32,6 +33,20 @@ def test_detects_openwrt_wlan_capability_from_tools():
     assert caps.supports_portal is False
     assert caps.supports_dynamic_vlan is False
     assert caps.supports_client_operations is True
+
+
+def test_detects_opennds_as_openwrt_portal_engine():
+    def which(name):
+        return f"/usr/bin/{name}" if name in {"uci", "ubus", "opennds", "ndsctl"} else None
+
+    caps = detect_platform_capabilities(
+        env={"OMADA_PLATFORM": "openwrt"},
+        command_exists=which,
+    )
+
+    assert caps.has_opennds is True
+    assert caps.supports_portal is True
+    assert "opennds:1" in capability_summary(caps)
 
 
 def test_capability_overrides_do_not_infer_unsupported_features():

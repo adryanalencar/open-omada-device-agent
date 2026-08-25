@@ -30,6 +30,7 @@ def detect_platform_capabilities(
     has_nft = which("nft") is not None
     has_hostapd = which("hostapd") is not None
     has_dnsmasq = which("dnsmasq") is not None
+    has_opennds = which("opennds") is not None and which("ndsctl") is not None
     openwrt = platform == "openwrt" or (platform == "auto" and has_uci and has_ubus)
 
     radio_bands = _radio_bands(values.get("OMADA_RADIO_BANDS", "2g"))
@@ -43,6 +44,7 @@ def detect_platform_capabilities(
         has_nft=has_nft,
         has_hostapd=has_hostapd,
         has_dnsmasq=has_dnsmasq,
+        has_opennds=has_opennds,
         radio_bands=radio_bands,
         max_ssids=max(0, max_ssids),
         supports_wlan_config=_feature(values, "OMADA_CAP_WLAN", wlan_possible),
@@ -53,7 +55,7 @@ def detect_platform_capabilities(
         supports_ssid_vlan=_feature(values, "OMADA_CAP_SSID_VLAN", False),
         supports_dynamic_vlan=_feature(values, "OMADA_CAP_DYNAMIC_VLAN", False),
         supports_management_vlan=_feature(values, "OMADA_CAP_MANAGEMENT_VLAN", False),
-        supports_portal=_feature(values, "OMADA_CAP_PORTAL", False),
+        supports_portal=_feature(values, "OMADA_CAP_PORTAL", openwrt and has_opennds),
         supports_dhcp_tracking=_feature(values, "OMADA_CAP_DHCP_TRACKING", openwrt and has_ubus),
         supports_option82=_feature(values, "OMADA_CAP_OPTION82", False),
         supports_led_control=_feature(
@@ -99,7 +101,8 @@ def capability_summary(capabilities: PlatformCapabilities) -> str:
         f"platform={capabilities.platform} bands={bands} maxSsids={capabilities.max_ssids} "
         f"tools=uci:{int(capabilities.has_uci)},ubus:{int(capabilities.has_ubus)},"
         f"nft:{int(capabilities.has_nft)},hostapd:{int(capabilities.has_hostapd)},"
-        f"dnsmasq:{int(capabilities.has_dnsmasq)} features={features}"
+        f"dnsmasq:{int(capabilities.has_dnsmasq)},opennds:{int(capabilities.has_opennds)} "
+        f"features={features}"
     )
 
 

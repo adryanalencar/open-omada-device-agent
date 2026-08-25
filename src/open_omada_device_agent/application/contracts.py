@@ -11,6 +11,7 @@ class PlatformCapabilities:
     has_nft: bool = False
     has_hostapd: bool = False
     has_dnsmasq: bool = False
+    has_opennds: bool = False
     radio_bands: tuple[RadioBand, ...] = ()
     max_ssids: int = 0
     supports_wlan_config: bool = False

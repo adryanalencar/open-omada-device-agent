@@ -86,6 +86,88 @@ def test_portal_runtime_noops_without_portal_config():
     assert runner.calls == []
 
 
+def test_portal_runtime_leaves_enforcement_to_opennds_when_available():
+    update = parse_config_body(
+        {"ssid_2G": {"ssid": [{"ssidName": "guest", "portal": True}]}}
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtPortalRuntime(runner, interface="wlan0").reconcile(
+        update,
+        _caps(has_opennds=True, has_nft=False),
+    )
+
+    assert result.applied is True
+    assert result.changed is False
+    assert runner.calls == []
+
+
+def test_portal_runtime_applies_free_policy_to_opennds_without_portal_wlan():
+    update = parse_config_body(
+        {
+            "portalFreePolicyConfig": {
+                "portalFreePolicy": [{"dstIp": "8.8.8.8", "dstMask": 32}],
+                "urlPortalFreePolicy": [{"url": "mediabeach.com.br/portal/c00e9a43"}],
+            }
+        }
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtPortalRuntime(runner, interface="").reconcile(
+        update,
+        _caps(has_opennds=True, has_nft=False),
+    )
+
+    assert result.applied is True
+    assert result.changed is True
+    assert (
+        (
+            "uci",
+            "add_list",
+            "opennds.@opennds[0].walledgarden_fqdn_list=mediabeach.com.br",
+        ),
+        None,
+    ) in runner.calls
+    assert (
+        (
+            "uci",
+            "add_list",
+            "opennds.@opennds[0].preauthenticated_users=allow all to 8.8.8.8/32",
+        ),
+        None,
+    ) in runner.calls
+    assert (
+        ("uci", "set", "opennds.@opennds[0].login_option_enabled=3"),
+        None,
+    ) in runner.calls
+
+
+def test_portal_runtime_applies_portal_config_redirect_to_opennds():
+    update = parse_config_body(
+        {
+            "portalConfigList": [
+                {
+                    "externalPortalServer": "https://portal.example.com/login",
+                }
+            ],
+        }
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtPortalRuntime(runner, interface="").reconcile(
+        update,
+        _caps(has_opennds=True, has_nft=False),
+    )
+
+    assert result.applied is True
+    assert result.changed is True
+    assert (
+        ("tee", "/usr/lib/opennds/theme_openomada_redirect.sh"),
+        runner.calls[0][1],
+    ) in runner.calls
+    assert "https://portal.example.com/login" in (runner.calls[0][1] or "")
+
+
 def test_portal_runtime_ignores_portal_wlan_beyond_platform_limit():
     update = parse_config_body(
         {

@@ -15,6 +15,7 @@ from .settings import AgentSettings
 from ..projections.inform import InformAssembler, LanObservation
 from ..contexts.lifecycle.infrastructure.session_state import JsonSessionStateRepository
 from ..adapters.outbound.openwrt.telemetry import collect_openwrt_wireless_clients, collect_openwrt_wireless_inform
+from ..adapters.outbound.openwrt.opennds import collect_opennds_clients
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,7 @@ def build_runtime(settings: AgentSettings) -> AgentRuntime:
             clients=lambda: merge_wireless_client_states(
                 clients_from_dhcp_leases(load_dnsmasq_leases(settings.dhcp_lease_file)),
                 collect_openwrt_wireless_clients(capabilities=capabilities),
+                collect_opennds_clients(capabilities=capabilities),
             ),
             client_projection=client_stats_payload,
             wireless_projection=lambda: collect_openwrt_wireless_inform(
