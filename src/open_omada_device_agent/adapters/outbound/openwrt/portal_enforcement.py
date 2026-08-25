@@ -90,6 +90,7 @@ def build_nftables_rules(policy: PortalPolicy, sessions: tuple[PortalSession, ..
         "  chain prerouting {",
         "    type nat hook prerouting priority dstnat; policy accept;",
         f"    iifname \"{interface}\" ether saddr @authed_macs accept",
+        f"    iifname \"{interface}\" ip daddr @walled_garden_v4 accept",
         f"    iifname \"{interface}\" tcp dport 80 redirect to :{redirect_port}",
         "  }",
         "}",
