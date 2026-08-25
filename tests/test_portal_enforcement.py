@@ -59,6 +59,7 @@ def test_nftables_adapter_replaces_existing_table_without_shell():
     assert runner.calls[1][0] == ("nft", "delete", "table", "inet", "openomada_portal")
     assert runner.calls[2][0] == ("nft", "-f", "-")
     assert runner.calls[2][1] is not None
+    assert "elements = {  }" not in runner.calls[2][1]
 
 
 def test_nftables_adapter_rejects_invalid_interface():
