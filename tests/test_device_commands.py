@@ -69,10 +69,10 @@ def test_sysfs_led_adapter_rejects_led_when_capability_is_disabled(tmp_path):
 def test_sysfs_led_adapter_rejects_locate_without_trigger_path(tmp_path):
     update = parse_config_body({"led": {"locate": True}})
 
-    result = SysfsLedAdapter(brightness_path=str(tmp_path / "brightness")).reconcile(
-        update,
-        _caps(),
-    )
+    result = SysfsLedAdapter(
+        brightness_path=str(tmp_path / "brightness"),
+        trigger_path="",
+    ).reconcile(update, _caps())
 
     assert result.applied is False
     assert "LED trigger path is not configured" in result.error
