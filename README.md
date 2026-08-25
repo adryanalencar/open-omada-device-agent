@@ -42,7 +42,7 @@ Omada Network Application `6.2.14.11` and an EAP110 v4-compatible AP profile.
 | Client operations and rate limits | 🟡 Optional `ubus`/nftables adapters |
 | LED enable/disable/locate | 🟡 Optional sysfs adapter |
 | FORGET / forget-no-reset response | ✅ Working |
-| Captive portal sessions/enforcement | 🟡 nftables enforcement can be wired to portal WLANs; no bundled portal web UI |
+| Captive portal sessions/enforcement | 🟡 openNDS enforcement, free-policy walled garden, ThemeSpec redirect to the Omada portal URL, and client auth state are wired |
 | Portal RADIUS authentication | 🟡 Library support; not wired to HTTP portal flow |
 | `GET_REQUEST` | 🟡 Defensive unsupported-key responses |
 | Notify families | 🟡 Defensive unsupported replies |
@@ -194,6 +194,49 @@ sequenceDiagram
         MGR-->>AP: Managed session restored
     end
 ```
+
+## OpenWrt captive portal
+
+On OpenWrt, captive portal enforcement should use `openNDS` instead of the
+agent's older nftables-only fallback. OpenWrt 25 snapshots use `apk`:
+
+```bash
+apk update
+apk add opennds dnsmasq-full conntrack
+```
+
+Older OpenWrt releases may still use `opkg`:
+
+```bash
+opkg update
+opkg install opennds dnsmasq-full conntrack
+```
+
+The agent auto-detects portal capability when `opennds` and `ndsctl` are
+available. If `OMADA_CAP_PORTAL=false` is set in `.env`, that explicit override
+disables portal acceptance.
+
+Validated behavior today:
+
+- openNDS captures unauthenticated WLAN clients on OpenWrt.
+- Omada `portalFreePolicyConfig` is translated into openNDS walled-garden FQDN
+  and preauthenticated IP rules.
+- When Omada sends a portal URL through `portalConfigList` or a `/portal/...`
+  URL in `portalFreePolicyConfig`, the agent writes an openNDS ThemeSpec that
+  redirects the captive browser to that Omada-configured URL instead of the
+  stock openNDS splash.
+- Omada `clientConfig.unauth` is translated into `ndsctl auth/deauth`.
+- When `conntrack` is installed, deauth also clears flows for the client's IP
+  so previously authenticated sessions stop immediately.
+- `ndsctl json` is merged into Omada client telemetry as portal state.
+- The old `inet openomada_portal` nftables fallback is skipped when openNDS is
+  present.
+
+Current limitation:
+
+- The ThemeSpec redirect intentionally does not append client MAC, client IP, or
+  original URL parameters. Full Omada-native `/portal/entry` parity may require
+  a signed FAS/authorization bridge once those parameters are mapped safely.
 
 ## Documentation
 

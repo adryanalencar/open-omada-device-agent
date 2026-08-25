@@ -30,7 +30,7 @@ identifiers.
 | Radio telemetry | 🟡 | Basic OpenWrt wireless settings from `ubus`; radio traffic counters not emitted until complete counters are available |
 | SSID telemetry | 🟡 | OpenWrt SSID/client counts and optional interface counters |
 | Client telemetry | 🟡 | DHCP lease backed IP/hostname merged with hostapd station RSSI/rate/traffic where available |
-| Captive portal | 🟡 | Session lifecycle, RADIUS client, and nftables portal enforcement are available; no bundled portal web UI |
+| Captive portal | 🟡 | openNDS enforcement, free-policy walled garden, ThemeSpec redirect to Omada portal URLs, `clientConfig.unauth`, and client-state reporting are available on OpenWrt; signed `/portal/entry` parameter parity is still incomplete |
 | Mesh | 🚧 | Not implemented |
 | Switch profile | 🚧 | Not implemented |
 | Gateway profile | 🚧 | Not implemented |
