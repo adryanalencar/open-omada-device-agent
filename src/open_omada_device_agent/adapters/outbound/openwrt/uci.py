@@ -187,8 +187,6 @@ def validate_update(
             errors.append(
                 "OMADA_MANAGEMENT_VLAN_INTERFACE and OMADA_MANAGEMENT_VLAN_DEVICE are required"
             )
-    if update.portal_free_policy is not None and not capabilities.supports_portal:
-        errors.append("portal free policy requested but platform capability is disabled")
     return tuple(dict.fromkeys(errors))
 
 

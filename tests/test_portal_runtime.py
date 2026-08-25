@@ -83,3 +83,19 @@ def test_portal_runtime_noops_without_portal_config():
     assert result.applied is True
     assert result.changed is False
     assert runner.calls == []
+
+
+def test_portal_runtime_noops_for_free_policy_without_portal_wlan():
+    update = parse_config_body(
+        {"portalFreePolicyConfig": {"portalFreePolicy": [{"value": "192.0.2.10"}]}}
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtPortalRuntime(runner, interface="wlan0").reconcile(
+        update,
+        _caps(supports_portal=False, has_nft=False),
+    )
+
+    assert result.applied is True
+    assert result.changed is False
+    assert runner.calls == []

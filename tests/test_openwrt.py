@@ -143,7 +143,7 @@ def test_reconcile_rejects_enabled_management_vlan_without_target(monkeypatch):
     assert runner.calls == []
 
 
-def test_reconcile_rejects_portal_free_policy_when_capability_is_disabled():
+def test_reconcile_accepts_portal_free_policy_as_passive_global_config():
     update = parse_config_body(
         {"portalFreePolicyConfig": {"portalFreePolicy": [{"value": "192.0.2.10"}]}}
     )
@@ -151,8 +151,8 @@ def test_reconcile_rejects_portal_free_policy_when_capability_is_disabled():
 
     result = OpenWrtUciAdapter(runner).reconcile(update, _caps(supports_portal=False))
 
-    assert result.applied is False
-    assert "portal free policy requested" in result.error
+    assert result.applied is True
+    assert result.changed is False
     assert runner.calls == []
 
 

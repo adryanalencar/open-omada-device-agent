@@ -64,9 +64,7 @@ class OpenWrtPortalRuntime:
 
 
 def _needs_portal_runtime(update: ApplyDeviceConfigurationCommand) -> bool:
-    return update.portal_free_policy is not None or any(
-        wlan.portal.enabled for wlan in update.wlans
-    )
+    return any(wlan.portal.enabled for wlan in update.wlans)
 
 
 def _walled_garden_ipv4(policy: PortalFreePolicy | None) -> tuple[str, ...]:
