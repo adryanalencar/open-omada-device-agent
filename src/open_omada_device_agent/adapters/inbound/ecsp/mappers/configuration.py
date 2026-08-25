@@ -10,7 +10,7 @@ from .....contexts.clients.domain import (
 )
 from .....contexts.device.domain import LedConfig, WifiControlLedConfig
 from .....contexts.networking.domain import ManagementVlan, validate_vlan_id
-from .....contexts.portal.domain import PortalFreePolicy
+from .....contexts.portal.domain import PortalConfiguration, PortalFreePolicy
 from .....contexts.wireless.domain import (
     CaptivePortalIntent, RadioBand, RadioConfig, WirelessDhcpOption82Intent,
     WirelessNetwork, WirelessSecurity, WirelessVlanIntent, validate_ssid_name,
@@ -34,13 +34,37 @@ SSID_KEYS: dict[str, RadioBand] = {
 }
 
 KNOWN_COMMON_KEYS = {"sequenceId", "configVersion", "configVersionInc"}
-KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | {
+ACK_ONLY_CONFIG_KEYS = {
+    "ipGroup",
+    "ipv6Group",
+    "lanSetting",
+    "lldp",
+    "logSetting",
+    "macFilterGlobal",
+    "schedulerGlobal",
+    "snmp",
+    "ssh",
+}
+
+# These AP config domains are accepted as known but currently have no local
+# OpenWrt side effect. They should not block the actionable SSID/radio domains
+# carried by the same SET_REQUEST.
+PASSIVE_CONFIG_KEYS = {
+    "schedulerAssoc",
+    "wirelessAdv_2G",
+    "wirelessAdv_5G",
+    "wirelessAdv_5G2",
+    "wirelessAdv_6G",
+}
+
+KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | ACK_ONLY_CONFIG_KEYS | PASSIVE_CONFIG_KEYS | {
     "clientConfig",
     "clientOperation",
     "clientOperation_cmd",
     "clientRateConfig",
     "led",
     "managementVlan",
+    "portalConfigList",
     "portalFreePolicyConfig",
     "wifiControlLed",
 }
@@ -76,6 +100,11 @@ def parse_config_body(body: Mapping[str, Any]) -> AccessPointConfigUpdate:
     raw_portal_free_policy = body.get("portalFreePolicyConfig")
     if raw_portal_free_policy is not None:
         portal_free_policy = _parse_portal_free_policy(raw_portal_free_policy)
+
+    portal_configs: tuple[PortalConfiguration, ...] = ()
+    raw_portal_configs = body.get("portalConfigList")
+    if raw_portal_configs is not None:
+        portal_configs = _parse_portal_configs(raw_portal_configs)
 
     led = None
     raw_led = body.get("led")
@@ -120,11 +149,14 @@ def parse_config_body(body: Mapping[str, Any]) -> AccessPointConfigUpdate:
         wlans=tuple(wlans),
         management_vlan=management_vlan,
         portal_free_policy=portal_free_policy,
+        portal_configs=portal_configs,
         led=led,
         wifi_control_led=wifi_control_led,
         client_configs=client_configs,
         client_operations=tuple(client_operations),
         client_rate_config=client_rate_config,
+        passive_keys=tuple(sorted(key for key in body if key in PASSIVE_CONFIG_KEYS)),
+        ack_only_keys=tuple(sorted(key for key in body if key in ACK_ONLY_CONFIG_KEYS)),
         unhandled_keys=unhandled,
         raw_body=dict(body),
     )
@@ -162,9 +194,7 @@ def _parse_ssid_item(
 ) -> WirelessNetwork:
     data = _require_mapping(raw, f"{band.value} SSID item")
     name = validate_ssid_name(str(data.get("ssidName") or ""))
-    vlan_id = _optional_int(data.get("vlanId"))
-    if vlan_id is not None:
-        validate_vlan_id(vlan_id)
+    vlan_id = _optional_vlan_id(data.get("vlanId"))
     fast_transition = data.get("fastTransition")
     return WirelessNetwork(
         band=band,
@@ -195,9 +225,9 @@ def _parse_ssid_item(
                 else None
             ),
             radius_profile_id=_optional_str(data.get("wpaRadiusProfileId")),
-            radius_auth=_optional_mapping(data.get("radiusAuth")),
-            radius_accounting=_optional_mapping(data.get("radiusAccounting")),
-            radius_mac_auth=_optional_mapping(data.get("macAuth")),
+            radius_auth=_optional_active_mapping(data.get("radiusAuth")),
+            radius_accounting=_optional_active_mapping(data.get("radiusAccounting")),
+            radius_mac_auth=_optional_active_mapping(data.get("macAuth")),
             pmf_mode=_optional_int(data.get("pmfMode")),
             fast_roaming=(
                 _optional_bool(fast_transition.get("enable11r"))
@@ -234,9 +264,7 @@ def _parse_dhcp_option82(raw: Any) -> WirelessDhcpOption82Intent | None:
 def _parse_management_vlan(raw: Any) -> ManagementVlan:
     data = _require_mapping(raw, "management VLAN config")
     enabled = _enabled_string(data.get("managementVlanEnable"))
-    vlan_id = _optional_int(data.get("managementVlanId"))
-    if enabled and vlan_id is not None:
-        validate_vlan_id(vlan_id)
+    vlan_id = _optional_vlan_id(data.get("managementVlanId"))
     return ManagementVlan(enabled=enabled, vlan_id=vlan_id, raw=dict(data))
 
 
@@ -253,6 +281,42 @@ def _parse_portal_free_policy(raw: Any) -> PortalFreePolicy:
         ),
         raw=dict(data),
     )
+
+
+def _parse_portal_configs(raw: Any) -> tuple[PortalConfiguration, ...]:
+    return tuple(
+        _parse_portal_config_item(item)
+        for item in _iter_items(raw, "portalConfigList")
+    )
+
+
+def _parse_portal_config_item(raw: Any) -> PortalConfiguration:
+    data = _require_mapping(raw, "portalConfigList item")
+    return PortalConfiguration(
+        auth_type=_optional_int(data.get("authType")),
+        auth_timeout=_optional_int(data.get("authTimeout")),
+        portal_day=_optional_int(data.get("portalDay")),
+        portal_hour=_optional_int(data.get("portalHour")),
+        portal_min=_optional_int(data.get("portalMin")),
+        https_redirect_enable=_optional_bool(data.get("httpsRedirectEnable")),
+        redirect=_optional_bool(data.get("redirect")),
+        redirect_url=_optional_str(data.get("redirectUrl")),
+        auth_server_type=_optional_int(data.get("authServerType")),
+        ext_auth_server=_optional_str(data.get("extAuthServer")),
+        external_portal_server=_optional_str(data.get("externalPortalServer")),
+        portal_title=_optional_str(data.get("portalTitle")),
+        portal_accept=_optional_bool(data.get("portalAccept")),
+        ssid_list=tuple(str(value) for value in data.get("ssidList") or ()),
+        raw=_redact_portal_config(data),
+    )
+
+
+def _redact_portal_config(data: Mapping[str, Any]) -> dict[str, Any]:
+    redacted = dict(data)
+    for key in ("password", "radiusPassword"):
+        if key in redacted:
+            redacted[key] = "***"
+    return redacted
 
 
 def _parse_led(raw: Any) -> LedConfig:
@@ -363,10 +427,27 @@ def _optional_mapping(value: Any) -> Mapping[str, Any] | None:
     return dict(value) if isinstance(value, Mapping) else None
 
 
+def _optional_active_mapping(value: Any) -> Mapping[str, Any] | None:
+    data = _optional_mapping(value)
+    if not data:
+        return None
+    for key in ("enable", "enabled", "radiusEnable", "authEnable", "accountingEnable"):
+        if key in data and not _optional_bool(data.get(key)):
+            return None
+    return data
+
+
 def _optional_int(value: Any) -> int | None:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def _optional_vlan_id(value: Any) -> int | None:
+    vlan_id = _optional_int(value)
+    if vlan_id in {None, 0}:
+        return None
+    return validate_vlan_id(vlan_id)
 
 
 def _optional_str(value: Any) -> str | None:

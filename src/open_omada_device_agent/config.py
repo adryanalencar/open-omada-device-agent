@@ -83,8 +83,9 @@ HOSTAPD_UBUS_IFACE = os.getenv("OMADA_HOSTAPD_UBUS_IFACE", "").strip()
 CLIENT_BLOCK_INTERFACE = os.getenv("OMADA_CLIENT_BLOCK_INTERFACE", "").strip()
 CLIENT_RATE_LIMIT_INTERFACE = os.getenv("OMADA_CLIENT_RATE_LIMIT_INTERFACE", "").strip()
 
-# Optional captive-portal enforcement. The agent only enforces traffic policy
-# and HTTP redirect; a local portal web application must listen on this port.
+# Optional captive-portal fallback. On OpenWrt, openNDS is preferred when
+# installed. These settings are used only by the older nftables-only redirect
+# path and do not render the Omada Controller portal.
 PORTAL_INTERFACE = os.getenv("OMADA_PORTAL_INTERFACE", "").strip()
 PORTAL_REDIRECT_PORT = _int("OMADA_PORTAL_REDIRECT_PORT", 8080)
 
@@ -92,6 +93,12 @@ PORTAL_REDIRECT_PORT = _int("OMADA_PORTAL_REDIRECT_PORT", 8080)
 # wrong OpenWrt network target can move the AP out of reach.
 MANAGEMENT_VLAN_INTERFACE = os.getenv("OMADA_MANAGEMENT_VLAN_INTERFACE", "").strip()
 MANAGEMENT_VLAN_DEVICE = os.getenv("OMADA_MANAGEMENT_VLAN_DEVICE", "").strip()
+
+# Lab/research compatibility. When enabled, known controller-side/default
+# configuration families that currently have no local OpenWrt side effect are
+# acknowledged instead of failing the entire SET_REQUEST batch. Keep disabled
+# outside controlled protocol labs.
+LAB_ACK_CONTROL_PLANE_CONFIG = _bool("OMADA_LAB_ACK_CONTROL_PLANE_CONFIG", False)
 
 # ECSP V2 framing/protocol identity.
 ECSP_VERSION = os.getenv("OMADA_ECSP_VERSION", "2.3.0")

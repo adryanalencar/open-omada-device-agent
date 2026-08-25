@@ -50,6 +50,7 @@ class AgentSettings(RuntimeAgentSettings):
             portal_redirect_port=config.PORTAL_REDIRECT_PORT,
             management_vlan_interface=config.MANAGEMENT_VLAN_INTERFACE,
             management_vlan_device=config.MANAGEMENT_VLAN_DEVICE,
+            lab_ack_control_plane_config=config.LAB_ACK_CONTROL_PLANE_CONFIG,
             ecsp_version=config.ECSP_VERSION,
             ecsp_ver_cap=config.ECSP_VER_CAP,
             controller_id=config.CONTROLLER_ID,

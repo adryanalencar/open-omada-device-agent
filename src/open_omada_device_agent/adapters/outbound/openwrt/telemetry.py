@@ -45,7 +45,11 @@ class OpenWrtWirelessTelemetry:
             return {}
         if not isinstance(status, Mapping):
             return {}
-        return openwrt_wireless_inform_from_status(status)
+        return _augment_with_hostapd_ssid_stats(
+            openwrt_wireless_inform_from_status(status),
+            status,
+            self._runner,
+        )
 
 
 class OpenWrtHostapdClientTelemetry:
@@ -192,6 +196,103 @@ def hostapd_client_states(
             )
         )
     return tuple(clients)
+
+
+def _augment_with_hostapd_ssid_stats(
+    payload: dict[str, object],
+    status: Mapping[str, Any],
+    runner: CommandRunner,
+) -> dict[str, object]:
+    for interface in openwrt_wireless_interfaces_from_status(status):
+        if interface.band is None or not interface.ssid:
+            continue
+        hostapd = runner.run(
+            ["ubus", "call", f"hostapd.{interface.ifname}", "get_clients"]
+        )
+        if hostapd.returncode != 0 or not hostapd.stdout.strip():
+            continue
+        try:
+            hostapd_status = json.loads(hostapd.stdout)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(hostapd_status, Mapping):
+            continue
+        stats = _hostapd_ssid_stats(interface.ssid, hostapd_status)
+        if stats is None:
+            continue
+        suffix = INFORM_SUFFIX_BY_BAND[interface.band]
+        _upsert_ssid_stats(payload, suffix, stats)
+        _merge_radio_station_count(payload, suffix, int(stats["clntNum"]))
+    return payload
+
+
+def _hostapd_ssid_stats(
+    ssid: str,
+    hostapd_status: Mapping[str, Any],
+) -> dict[str, object] | None:
+    raw_clients = hostapd_status.get("clients")
+    if not isinstance(raw_clients, Mapping):
+        return None
+    clients = tuple(
+        raw_client
+        for raw_client in raw_clients.values()
+        if isinstance(raw_client, Mapping)
+    )
+    stats: dict[str, object] = {"ssid": ssid, "clntNum": len(clients)}
+    down = sum(_counter(_mapping(client.get("bytes")), "tx", "tx_bytes") for client in clients)
+    up = sum(_counter(_mapping(client.get("bytes")), "rx", "rx_bytes") for client in clients)
+    down_packets = sum(
+        _counter(_mapping(client.get("packets")), "tx", "tx_packets")
+        for client in clients
+    )
+    up_packets = sum(
+        _counter(_mapping(client.get("packets")), "rx", "rx_packets")
+        for client in clients
+    )
+    if down:
+        stats["down"] = down
+    if up:
+        stats["up"] = up
+    if down_packets:
+        stats["downPkts"] = down_packets
+    if up_packets:
+        stats["upPkts"] = up_packets
+    return stats
+
+
+def _upsert_ssid_stats(
+    payload: dict[str, object],
+    suffix: str,
+    stats: dict[str, object],
+) -> None:
+    key = f"ssidStats_{suffix}"
+    existing = payload.get(key)
+    if isinstance(existing, list):
+        for index, item in enumerate(existing):
+            if isinstance(item, dict) and item.get("ssid") == stats.get("ssid"):
+                merged = dict(item)
+                merged.update(stats)
+                existing[index] = merged
+                return
+        existing.append(stats)
+        return
+    payload[key] = [stats]
+
+
+def _merge_radio_station_count(
+    payload: dict[str, object],
+    suffix: str,
+    station_count: int,
+) -> None:
+    if station_count <= 0:
+        return
+    key = f"wSettings_{suffix}"
+    raw = payload.get(key)
+    info = raw if isinstance(raw, dict) else {}
+    current = _optional_int(info.get("staNum")) or 0
+    if raw is not info:
+        payload[key] = info
+    info["staNum"] = max(current, station_count)
 
 
 def _wireless_info(

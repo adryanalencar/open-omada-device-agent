@@ -5,6 +5,7 @@ domain objects; this adapter turns supported domain objects into UCI changes.
 """
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 from collections.abc import Sequence
@@ -16,6 +17,9 @@ from ....application.commands import ApplyDeviceConfigurationCommand
 from ....contexts.wireless.domain import RadioBand, RadioConfig, WirelessNetwork
 
 from ....application.contracts import PlatformCapabilities
+
+
+log = logging.getLogger("open_omada.openwrt.uci")
 
 
 class CommandRunner(Protocol):
@@ -71,6 +75,9 @@ class OpenWrtUciAdapter:
         update: ApplyDeviceConfigurationCommand,
         capabilities: PlatformCapabilities,
     ) -> ReconciliationResult:
+        capacity_warning = _capacity_warning(update, capabilities)
+        if capacity_warning:
+            log.warning(capacity_warning)
         errors = validate_update(
             update,
             capabilities,
@@ -91,7 +98,10 @@ class OpenWrtUciAdapter:
             management_vlan_device=self._management_vlan_device,
         )
         if not batch:
-            return ReconciliationResult(applied=True, changed=False)
+            return ReconciliationResult(
+                applied=True,
+                changed=False,
+            )
 
         result = self._runner.run(["uci", "-q", "batch"], input_text="\n".join(batch) + "\n")
         if result.returncode != 0:
@@ -111,7 +121,11 @@ class OpenWrtUciAdapter:
                 command_count=len(batch),
             )
 
-        return ReconciliationResult(applied=True, changed=True, command_count=len(batch))
+        return ReconciliationResult(
+            applied=True,
+            changed=True,
+            command_count=len(batch),
+        )
 
 
 def validate_update(
@@ -124,14 +138,10 @@ def validate_update(
     errors: list[str] = []
     if (update.radios or update.wlans) and not capabilities.supports_wlan_config:
         errors.append("platform does not support WLAN configuration")
-    if len(update.wlans) > capabilities.max_ssids:
-        errors.append(
-            f"controller requested {len(update.wlans)} SSIDs but platform max is {capabilities.max_ssids}"
-        )
     for radio in update.radios:
         if radio.band not in capabilities.radio_bands:
             errors.append(f"radio band {radio.band.value} is not supported")
-    for wlan in update.wlans:
+    for wlan in _active_wlans(update, capabilities):
         if wlan.band not in capabilities.radio_bands:
             errors.append(f"SSID band {wlan.band.value} is not supported")
         if wlan.vlan.vlan_id is not None and not capabilities.supports_ssid_vlan:
@@ -187,8 +197,6 @@ def validate_update(
             errors.append(
                 "OMADA_MANAGEMENT_VLAN_INTERFACE and OMADA_MANAGEMENT_VLAN_DEVICE are required"
             )
-    if update.portal_free_policy is not None and not capabilities.supports_portal:
-        errors.append("portal free policy requested but platform capability is disabled")
     return tuple(dict.fromkeys(errors))
 
 
@@ -201,10 +209,12 @@ def build_uci_batch(
 ) -> tuple[str, ...]:
     lines: list[str] = []
     network_lines: list[str] = []
+    active_wlans = _active_wlans(update, capabilities)
+    omitted_wlans = tuple(update.wlans[len(active_wlans):])
     vlan_ids = sorted(
         {
             wlan.vlan.vlan_id
-            for wlan in update.wlans
+            for wlan in active_wlans
             if wlan.vlan.vlan_id is not None and capabilities.supports_ssid_vlan
         }
     )
@@ -223,11 +233,43 @@ def build_uci_batch(
         lines.append("commit network")
     for radio in update.radios:
         lines.extend(_radio_lines(radio))
-    for wlan in update.wlans:
+    for section in _default_sections(active_wlans):
+        lines.append(_set("wireless", section, "disabled", "1"))
+    for wlan in omitted_wlans:
+        lines.append(f"delete wireless.{_wlan_section(wlan)}")
+    for wlan in active_wlans:
         lines.extend(_wlan_lines(wlan, capabilities))
     if lines:
         lines.append("commit wireless")
     return tuple(lines)
+
+
+def _capacity_warning(
+    update: ApplyDeviceConfigurationCommand,
+    capabilities: PlatformCapabilities,
+) -> str:
+    if len(update.wlans) <= capabilities.max_ssids:
+        return ""
+    return (
+        f"controller requested {len(update.wlans)} SSIDs but platform max is "
+        f"{capabilities.max_ssids}; applied first {capabilities.max_ssids}"
+    )
+
+
+def _active_wlans(
+    update: ApplyDeviceConfigurationCommand,
+    capabilities: PlatformCapabilities,
+) -> tuple[WirelessNetwork, ...]:
+    return tuple(update.wlans[: max(0, capabilities.max_ssids)])
+
+
+def _default_sections(wlans: tuple[WirelessNetwork, ...]) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            f"default_{_radio_section(wlan.band, wlan.radio_id)}"
+            for wlan in wlans
+        )
+    )
 
 
 def _radio_lines(radio: RadioConfig) -> tuple[str, ...]:

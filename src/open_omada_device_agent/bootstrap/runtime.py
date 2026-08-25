@@ -15,6 +15,7 @@ from .settings import AgentSettings
 from ..projections.inform import InformAssembler, LanObservation
 from ..contexts.lifecycle.infrastructure.session_state import JsonSessionStateRepository
 from ..adapters.outbound.openwrt.telemetry import collect_openwrt_wireless_clients, collect_openwrt_wireless_inform
+from ..adapters.outbound.openwrt.opennds import collect_opennds_clients
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ def build_runtime(settings: AgentSettings) -> AgentRuntime:
             settings.public_ip_lookup_url,
             settings.public_ip_lookup_timeout,
         ),
+        capabilities=capabilities,
     )
     return AgentRuntime(
         configuration=ApplyDeviceConfiguration(
@@ -68,6 +70,7 @@ def build_runtime(settings: AgentSettings) -> AgentRuntime:
                     rate_limit_interface=settings.client_rate_limit_interface,
                 ),
             ),
+            allow_ack_only_config=settings.lab_ack_control_plane_config,
         ),
         inform=InformAssembler(
             device_info=profile.device_info,
@@ -75,6 +78,7 @@ def build_runtime(settings: AgentSettings) -> AgentRuntime:
             clients=lambda: merge_wireless_client_states(
                 clients_from_dhcp_leases(load_dnsmasq_leases(settings.dhcp_lease_file)),
                 collect_openwrt_wireless_clients(capabilities=capabilities),
+                collect_opennds_clients(capabilities=capabilities),
             ),
             client_projection=client_stats_payload,
             wireless_projection=lambda: collect_openwrt_wireless_inform(

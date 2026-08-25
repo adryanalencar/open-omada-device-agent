@@ -41,6 +41,7 @@ def test_build_nftables_rules_for_authenticated_and_blocked_clients():
     assert "02:00:00:00:00:02" in rules
     assert "udp dport { 53, 67, 68 } accept" in rules
     assert "ip daddr @walled_garden_v4 accept" in rules
+    assert rules.count("ip daddr @walled_garden_v4 accept") == 2
     assert "tcp dport 80 redirect to :8080" in rules
     assert "tcp dport 443 drop" in rules
 
@@ -59,6 +60,7 @@ def test_nftables_adapter_replaces_existing_table_without_shell():
     assert runner.calls[1][0] == ("nft", "delete", "table", "inet", "openomada_portal")
     assert runner.calls[2][0] == ("nft", "-f", "-")
     assert runner.calls[2][1] is not None
+    assert "elements = {  }" not in runner.calls[2][1]
 
 
 def test_nftables_adapter_rejects_invalid_interface():

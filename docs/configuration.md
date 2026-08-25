@@ -91,14 +91,14 @@ OMADA_TLS_CA_FILE=/etc/open-omada/controller-ca.pem
 | --- | --- | --- |
 | `OMADA_PLATFORM` | `auto` | `auto`, `openwrt`, or `generic` capability detection |
 | `OMADA_RADIO_BANDS` | `2g` | Comma-separated supported AP bands: `2g,5g,5g2,6g` |
-| `OMADA_MAX_SSIDS` | `4` | Maximum SSIDs the platform adapter will accept |
+| `OMADA_MAX_SSIDS` | `4` | Manual upper bound for SSIDs the platform adapter will accept. On OpenWrt, `iw list` can reduce this automatically when the radio does not support multiple AP interfaces. |
 | `OMADA_CAP_WLAN` | auto on OpenWrt with `uci` | Enable WLAN/radio UCI reconciliation |
 | `OMADA_CAP_WPA2_PSK` | auto on OpenWrt with `uci` | Accept WPA2-PSK WLANs |
 | `OMADA_CAP_WPA3_PSK` | `false` | Accept WPA3-PSK WLANs |
 | `OMADA_CAP_SSID_VLAN` | `false` | Accept SSID VLAN mapping |
 | `OMADA_CAP_DYNAMIC_VLAN` | `false` | Accept dynamic VLAN requests |
 | `OMADA_CAP_MANAGEMENT_VLAN` | `false` | Accept management VLAN requests |
-| `OMADA_CAP_PORTAL` | `false` | Enable portal WLAN acceptance and nftables captive enforcement |
+| `OMADA_CAP_PORTAL` | auto with OpenWrt + openNDS | Enable portal WLAN acceptance; explicit `false` disables portal acceptance |
 | `OMADA_CAP_DHCP_TRACKING` | auto on OpenWrt with `ubus` | Include observed DHCP lease clients |
 | `OMADA_CAP_OPTION82` | `false` | Accept DHCP Option 82 WLAN settings |
 | `OMADA_CAP_LED` | path-based | Enable sysfs LED brightness/trigger writes |
@@ -114,11 +114,61 @@ OMADA_TLS_CA_FILE=/etc/open-omada/controller-ca.pem
 | `OMADA_HOSTAPD_UBUS_IFACE` | empty | hostapd ubus object suffix for reconnect/deauth, for example `wlan0` |
 | `OMADA_CLIENT_BLOCK_INTERFACE` | empty | Bridge/interface used by nftables client block rules |
 | `OMADA_CLIENT_RATE_LIMIT_INTERFACE` | empty | Bridge/interface used by nftables per-client rate-limit rules |
-| `OMADA_PORTAL_INTERFACE` | empty | Portal WLAN interface for captive nftables policy |
-| `OMADA_PORTAL_REDIRECT_PORT` | `8080` | Local HTTP port used as captive redirect target |
+| `OMADA_PORTAL_INTERFACE` | empty | Fallback nftables-only portal interface; unused when openNDS is installed |
+| `OMADA_PORTAL_REDIRECT_PORT` | `8080` | Fallback nftables-only local HTTP redirect port; unused when openNDS is installed |
 
 Unsupported controller keys are intentionally rejected with a local
 `SET_RESPONSE.errcode=1`.
+
+## Captive portal on OpenWrt
+
+Use `openNDS` as the OpenWrt captive portal engine. The built-in nftables
+adapter remains only as a fallback for lab setups without openNDS.
+
+For OpenWrt 25 snapshots:
+
+```bash
+apk update
+apk add opennds dnsmasq-full conntrack
+```
+
+For older OpenWrt package feeds:
+
+```bash
+opkg update
+opkg install opennds dnsmasq-full conntrack
+```
+
+Minimal UCI example:
+
+```bash
+uci set opennds.@opennds[0].enabled='1'
+uci set opennds.@opennds[0].gatewayinterface='br-lan'
+uci set opennds.@opennds[0].gatewayport='2050'
+uci commit opennds
+/etc/init.d/opennds restart
+```
+
+With openNDS installed, the agent:
+
+- reports portal client state from `ndsctl json`;
+- applies `portalFreePolicyConfig` URL rules as openNDS walled-garden FQDNs;
+- applies `portalFreePolicyConfig` IP rules as openNDS preauthenticated user
+  rules;
+- writes `/usr/lib/opennds/theme_openomada_redirect.sh` and sets
+  `login_option_enabled=3` when Omada provides a portal URL through
+  `portalConfigList` or a `/portal/...` free-policy URL;
+- sets `allow_preemptive_authentication=0` so clients use the classic HTTP
+  redirect path instead of stopping at the openNDS RFC8910 status page;
+- applies `clientConfig.unauth=false` with `ndsctl auth`;
+- applies `clientConfig.unauth=true` with `ndsctl deauth`;
+- clears conntrack entries for the client IP after deauth when `conntrack` is
+  installed;
+- does not install its own `inet openomada_portal` table.
+
+The generated ThemeSpec redirects only to the configured portal URL. It does not
+append client MAC, client IP, or original URL parameters until the Omada
+`/portal/entry` parameter contract is mapped safely.
 
 ## DHCP/client tracking
 

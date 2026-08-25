@@ -1,6 +1,7 @@
-from open_omada_device_agent.ap_config import parse_config_body
+import json
 from dataclasses import dataclass, field
 
+from open_omada_device_agent.ap_config import parse_config_body
 from open_omada_device_agent.device_commands import (
     OpenWrtClientControlAdapter,
     SysfsLedAdapter,
@@ -69,10 +70,10 @@ def test_sysfs_led_adapter_rejects_led_when_capability_is_disabled(tmp_path):
 def test_sysfs_led_adapter_rejects_locate_without_trigger_path(tmp_path):
     update = parse_config_body({"led": {"locate": True}})
 
-    result = SysfsLedAdapter(brightness_path=str(tmp_path / "brightness")).reconcile(
-        update,
-        _caps(),
-    )
+    result = SysfsLedAdapter(
+        brightness_path=str(tmp_path / "brightness"),
+        trigger_path="",
+    ).reconcile(update, _caps())
 
     assert result.applied is False
     assert "LED trigger path is not configured" in result.error
@@ -145,6 +146,100 @@ def test_openwrt_client_control_reconnects_client_through_hostapd_ubus():
             None,
         )
     ]
+
+
+def test_openwrt_client_control_authenticates_portal_client_with_opennds():
+    update = parse_config_body(
+        {"clientConfig": [{"clientMac": "AA-BB-CC-DD-EE-FF", "unauth": False}]}
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtClientControlAdapter(runner).reconcile(
+        update,
+        _caps(has_opennds=True),
+    )
+
+    assert result.applied is True
+    assert result.changed is True
+    assert runner.calls == [
+        (("ndsctl", "auth", "aa:bb:cc:dd:ee:ff", "", "", "", "", "", ""), None)
+    ]
+
+
+def test_openwrt_client_control_deauthenticates_portal_client_with_opennds():
+    update = parse_config_body(
+        {"clientConfig": [{"clientMac": "aa:bb:cc:dd:ee:ff", "unauth": True}]}
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtClientControlAdapter(runner).reconcile(
+        update,
+        _caps(has_opennds=True),
+    )
+
+    assert result.applied is True
+    assert result.changed is True
+    assert runner.calls == [
+        (("ndsctl", "json", "aa:bb:cc:dd:ee:ff"), None),
+        (("ndsctl", "deauth", "aa:bb:cc:dd:ee:ff"), None),
+    ]
+
+
+@dataclass
+class PortalClientRunner(RecordingRunner):
+    def run(self, args, *, input_text=None):
+        command = tuple(args)
+        self.calls.append((command, input_text))
+        if command == ("ndsctl", "json", "aa:bb:cc:dd:ee:ff"):
+            return CommandResult(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "clients": {
+                            "aa:bb:cc:dd:ee:ff": {
+                                "ip": "192.168.1.123",
+                                "state": "Authenticated",
+                            }
+                        }
+                    }
+                ),
+            )
+        return CommandResult(returncode=0)
+
+
+def test_openwrt_client_control_flushes_conntrack_after_portal_deauth():
+    update = parse_config_body(
+        {"clientConfig": [{"clientMac": "aa:bb:cc:dd:ee:ff", "unauth": True}]}
+    )
+    runner = PortalClientRunner()
+
+    result = OpenWrtClientControlAdapter(runner).reconcile(
+        update,
+        _caps(has_opennds=True),
+    )
+
+    assert result.applied is True
+    assert result.changed is True
+    assert runner.calls == [
+        (("ndsctl", "json", "aa:bb:cc:dd:ee:ff"), None),
+        (("ndsctl", "deauth", "aa:bb:cc:dd:ee:ff"), None),
+        (("conntrack", "-D", "-s", "192.168.1.123"), None),
+        (("conntrack", "-D", "-d", "192.168.1.123"), None),
+    ]
+
+
+def test_openwrt_client_control_rejects_client_config_without_opennds():
+    update = parse_config_body(
+        {"clientConfig": [{"clientMac": "aa:bb:cc:dd:ee:ff", "unauth": False}]}
+    )
+
+    result = OpenWrtClientControlAdapter(RecordingRunner()).reconcile(
+        update,
+        _caps(has_opennds=False),
+    )
+
+    assert result.applied is False
+    assert "requires openNDS" in result.error
 
 
 def test_openwrt_client_control_blocks_client_with_bridge_nftables():

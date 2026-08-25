@@ -75,18 +75,9 @@ def build_nftables_rules(policy: PortalPolicy, sessions: tuple[PortalSession, ..
 
     lines = [
         f"table inet {NFT_TABLE} {{",
-        "  set authed_macs {",
-        "    type ether_addr",
-        f"    elements = {{ {_join_set(authed)} }}",
-        "  }",
-        "  set blocked_macs {",
-        "    type ether_addr",
-        f"    elements = {{ {_join_set(blocked)} }}",
-        "  }",
-        "  set walled_garden_v4 {",
-        "    type ipv4_addr",
-        f"    elements = {{ {_join_set(allowed_ips)} }}",
-        "  }",
+        *_set_lines("authed_macs", "ether_addr", authed),
+        *_set_lines("blocked_macs", "ether_addr", blocked),
+        *_set_lines("walled_garden_v4", "ipv4_addr", allowed_ips),
         "  chain forward {",
         "    type filter hook forward priority filter; policy accept;",
         f"    iifname \"{interface}\" ether saddr @blocked_macs drop",
@@ -99,6 +90,7 @@ def build_nftables_rules(policy: PortalPolicy, sessions: tuple[PortalSession, ..
         "  chain prerouting {",
         "    type nat hook prerouting priority dstnat; policy accept;",
         f"    iifname \"{interface}\" ether saddr @authed_macs accept",
+        f"    iifname \"{interface}\" ip daddr @walled_garden_v4 accept",
         f"    iifname \"{interface}\" tcp dport 80 redirect to :{redirect_port}",
         "  }",
         "}",
@@ -106,8 +98,15 @@ def build_nftables_rules(policy: PortalPolicy, sessions: tuple[PortalSession, ..
     return "\n".join(lines) + "\n"
 
 
-def _join_set(values: tuple[str, ...]) -> str:
-    return ", ".join(values)
+def _set_lines(name: str, nft_type: str, values: tuple[str, ...]) -> tuple[str, ...]:
+    lines = [
+        f"  set {name} {{",
+        f"    type {nft_type}",
+    ]
+    if values:
+        lines.append(f"    elements = {{ {', '.join(values)} }}")
+    lines.append("  }")
+    return tuple(lines)
 
 
 def _interface_name(value: str) -> str:

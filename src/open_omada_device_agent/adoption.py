@@ -130,8 +130,8 @@ def _device_negotiation_body(
         "controllerSetting": {"controllerId": controller_id},
         "components": {},
         "components_v2": dict(profile.components_v2()),
-        "channelInfo": [],
-        "radioCap": [],
+        "channelInfo": list(profile.channel_info()),
+        "radioCap": list(profile.radio_cap()),
         "deviceMisc": profile.device_misc(),
     }
 
@@ -275,6 +275,8 @@ def _describe_config_update(update: ApplyDeviceConfigurationCommand) -> str:
             f"l2:{len(update.portal_free_policy.layer2_rules)},"
             f"url:{len(update.portal_free_policy.url_rules)}"
         )
+    if update.portal_configs:
+        parts.append(f"portalConfigList={len(update.portal_configs)}")
     if update.client_configs:
         parts.append(f"clientConfig={len(update.client_configs)}")
     if update.client_operations:
@@ -289,6 +291,10 @@ def _describe_config_update(update: ApplyDeviceConfigurationCommand) -> str:
             f"action:{update.client_rate_config.action},"
             f"limits:{len(update.client_rate_config.limits)}"
         )
+    if update.passive_keys:
+        parts.append(f"passive={','.join(update.passive_keys)}")
+    if update.ack_only_keys:
+        parts.append(f"ackOnly={','.join(update.ack_only_keys)}")
     if update.unhandled_keys:
         parts.append(f"unhandled={','.join(update.unhandled_keys)}")
     return " ".join(parts)

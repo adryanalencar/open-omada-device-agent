@@ -67,9 +67,15 @@ flowchart LR
   Command --> UC[ApplyDeviceConfiguration]
   UC --> WP[Configuration ports]
   WP --> UCI[OpenWrt UCI]
-  WP --> NFT[nftables portal]
+  WP --> NDS[openNDS portal / ThemeSpec]
+  WP --> NFT[nftables portal fallback]
   WP --> SYS[sysfs / ubus commands]
 ```
+
+`OpenWrtPortalRuntime` prefers openNDS when it is installed, translates Omada
+free-policy rules into openNDS policy, and writes a small ThemeSpec redirect
+when the Controller supplies a portal URL. The older nftables-only fallback is
+skipped to avoid overlapping captive enforcement engines.
 
 `adapters.inbound.ecsp` is an anti-corruption layer. Raw mappings are accepted
 only at framing and mapper boundaries. The mapper emits typed radio, WLAN,
@@ -108,6 +114,7 @@ mapping at the boundary.
 flowchart LR
   DNS[dnsmasq leases] --> Obs[Client observations]
   UBUS[ubus / hostapd] --> Obs
+  NDS[ndsctl json] --> Obs
   Obs --> Merge[Unified client state]
   UBUS --> Wireless[Wireless observation]
   Profile[Device profile/read model] --> Assemble[InformAssembler]

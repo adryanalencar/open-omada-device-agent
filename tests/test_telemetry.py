@@ -107,6 +107,63 @@ def test_collect_openwrt_wireless_telemetry_uses_ubus_without_shell():
     assert runner.calls == [("ubus", "call", "network.wireless", "status")]
 
 
+def test_collect_openwrt_wireless_telemetry_uses_hostapd_for_ssid_client_counts():
+    runner = SequenceRunner(
+        results=[
+            CommandResult(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "radio0": {
+                            "config": {"channel": 6, "htmode": "HT20"},
+                            "interfaces": [
+                                {
+                                    "ifname": "phy0-ap0",
+                                    "config": {"ssid": "guest"},
+                                    "stations": [],
+                                }
+                            ],
+                        }
+                    }
+                ),
+            ),
+            CommandResult(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "clients": {
+                            "aa:bb:cc:dd:ee:ff": {
+                                "bytes": {"rx": 100, "tx": 200},
+                                "packets": {"rx": 1, "tx": 2},
+                            }
+                        }
+                    }
+                ),
+            ),
+        ],
+        calls=[],
+    )
+    caps = PlatformCapabilities(platform="openwrt", has_ubus=True)
+
+    payload = collect_openwrt_wireless_inform(capabilities=caps, runner=runner)
+
+    assert payload["wSettings_2G"] == {"ch": "6", "bw": "HT20", "staNum": 1}
+    assert payload["ssidStats_2G"] == [
+        {
+            "ssid": "guest",
+            "clntNum": 1,
+            "down": 200,
+            "up": 100,
+            "downPkts": 2,
+            "upPkts": 1,
+        }
+    ]
+    assert runner.calls == [
+        ("ubus", "call", "network.wireless", "status"),
+        ("ubus", "call", "hostapd.phy0-ap0", "get_clients"),
+    ]
+
+
 def test_collect_openwrt_wireless_telemetry_is_empty_without_ubus():
     runner = StaticRunner(result=CommandResult(returncode=0, stdout="{}"), calls=[])
     caps = PlatformCapabilities(platform="openwrt", has_ubus=False)

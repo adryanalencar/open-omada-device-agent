@@ -60,6 +60,22 @@ def test_parse_radio_wlan_vlan_and_portal_config_from_set_body():
                 "portalFreePolicy": [{"type": "ip", "value": "192.0.2.10"}],
                 "urlPortalFreePolicy": [{"host": "example.com"}],
             },
+            "portalConfigList": [
+                {
+                    "authType": 4,
+                    "authTimeout": 120,
+                    "httpsRedirectEnable": False,
+                    "redirect": True,
+                    "redirectUrl": "https://example.com/landing",
+                    "authServerType": 2,
+                    "externalPortalServer": "https://portal.example.com/login",
+                    "portalTitle": "Guest Portal",
+                    "portalAccept": True,
+                    "ssidList": ["lab-wlan"],
+                    "password": "do-not-copy",
+                    "radiusPassword": "do-not-copy",
+                }
+            ],
             "led": {"enable": "on"},
         }
     )
@@ -99,6 +115,13 @@ def test_parse_radio_wlan_vlan_and_portal_config_from_set_body():
     assert update.portal_free_policy is not None
     assert len(update.portal_free_policy.layer2_rules) == 1
     assert len(update.portal_free_policy.url_rules) == 1
+    assert len(update.portal_configs) == 1
+    assert update.portal_configs[0].auth_type == 4
+    assert update.portal_configs[0].external_portal_server == "https://portal.example.com/login"
+    assert update.portal_configs[0].redirect_url == "https://example.com/landing"
+    assert update.portal_configs[0].ssid_list == ("lab-wlan",)
+    assert update.portal_configs[0].raw["password"] == "***"
+    assert update.portal_configs[0].raw["radiusPassword"] == "***"
 
 
 def test_parse_set_request_requires_object_body():
@@ -109,6 +132,31 @@ def test_parse_set_request_requires_object_body():
 def test_parse_ssid_rejects_invalid_vlan():
     with pytest.raises(ValueError, match="VLAN ID"):
         parse_config_body({"ssid_5G": {"ssid": [{"ssidName": "bad", "vlanId": 5000}]}})
+
+
+def test_parse_ssid_vlan_zero_as_no_vlan():
+    update = parse_config_body(
+        {"ssid_2G": {"ssid": [{"ssidName": "corp", "vlanId": 0}]}}
+    )
+
+    assert update.wlans[0].vlan.vlan_id is None
+
+
+def test_parse_disabled_mac_auth_as_no_radius_request():
+    update = parse_config_body(
+        {
+            "ssid_2G": {
+                "ssid": [
+                    {
+                        "ssidName": "guest",
+                        "macAuth": {"enable": False},
+                    }
+                ]
+            }
+        }
+    )
+
+    assert update.wlans[0].security.radius_mac_auth is None
 
 
 def test_parse_wifi_control_led_config():
@@ -164,6 +212,52 @@ def test_parse_client_config_operation_and_rate_limit_models():
 def test_parse_client_operation_requires_client_mac():
     with pytest.raises(ValueError, match="clientOperation.clientMac"):
         parse_config_body({"clientOperation": [{"operation": 2}]})
+
+
+def test_parse_initial_controller_defaults_as_ack_only_config():
+    update = parse_config_body(
+        {
+            "lanSetting": {
+                "connType": 1,
+                "useFallBack": True,
+                "fallBackIp": "192.168.0.254",
+                "fallBackMask": "255.255.255.0",
+            },
+            "macFilterGlobal": {"enable": True},
+            "schedulerGlobal": {"enable": True, "mode": 0},
+            "logSetting": {"mailEnable": False, "logServerEnable": False},
+            "ssh": {"sshenable": "on", "sshserverPort": 22, "layer3Access": True},
+            "ipGroup": {"ipGroups": [{"ipSubnets": ["0.0.0.0/0"]}]},
+            "ipv6Group": {"ipv6Groups": [{"ipv6Subnets": ["::/0"]}]},
+            "snmp": {"v1v2cEnable": 0, "v3Enable": 0},
+            "lldp": {"enable": 1},
+        }
+    )
+
+    assert update.unhandled_keys == ()
+    assert update.ack_only_keys == (
+        "ipGroup",
+        "ipv6Group",
+        "lanSetting",
+        "lldp",
+        "logSetting",
+        "macFilterGlobal",
+        "schedulerGlobal",
+        "snmp",
+        "ssh",
+    )
+
+
+def test_parse_scheduler_and_wireless_advanced_as_passive_config():
+    update = parse_config_body(
+        {
+            "schedulerAssoc": [{"id": 1, "profileId": 2}],
+            "wirelessAdv_2G": {"radioId": 0, "dtimPeriod": 1, "beaconInterval": 100},
+        }
+    )
+
+    assert update.unhandled_keys == ()
+    assert update.passive_keys == ("schedulerAssoc", "wirelessAdv_2G")
 
 
 def test_validate_ssid_rejects_names_over_32_bytes():

@@ -5,7 +5,7 @@ from typing import Any, Mapping
 from ..contexts.clients.domain import ClientAuthConfig, ClientControlOperation, ClientRateConfig
 from ..contexts.device.domain import LedConfig, WifiControlLedConfig
 from ..contexts.networking.domain import ManagementVlan
-from ..contexts.portal.domain import PortalFreePolicy
+from ..contexts.portal.domain import PortalConfiguration, PortalFreePolicy
 from ..contexts.wireless.domain import RadioConfig, WirelessNetwork
 
 @dataclass(frozen=True)
@@ -17,10 +17,13 @@ class ApplyDeviceConfigurationCommand:
     wlans: tuple[WirelessNetwork, ...] = ()
     management_vlan: ManagementVlan | None = None
     portal_free_policy: PortalFreePolicy | None = None
+    portal_configs: tuple[PortalConfiguration, ...] = ()
     led: LedConfig | None = None
     wifi_control_led: WifiControlLedConfig | None = None
     client_configs: tuple[ClientAuthConfig, ...] = ()
     client_operations: tuple[ClientControlOperation, ...] = ()
     client_rate_config: ClientRateConfig | None = None
+    passive_keys: tuple[str, ...] = ()
+    ack_only_keys: tuple[str, ...] = ()
     unhandled_keys: tuple[str, ...] = ()
     raw_body: Mapping[str, Any] = field(default_factory=dict)

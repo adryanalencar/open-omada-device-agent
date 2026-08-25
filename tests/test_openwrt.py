@@ -62,6 +62,7 @@ def test_builds_idempotent_uci_batch_for_radio_and_psk_wlan():
     assert "set wireless.radio0.disabled='0'" in batch
     assert "set wireless.radio0.channel='11'" in batch
     assert "set wireless.radio0.htmode='HT20'" in batch
+    assert "set wireless.default_radio0.disabled='1'" in batch
     assert "delete wireless.openomada_2g_1" in batch
     assert "set wireless.openomada_2g_1=wifi-iface" in batch
     assert "set wireless.openomada_2g_1.ssid='Open Omada'" in batch
@@ -83,6 +84,34 @@ def test_reconcile_runs_uci_batch_and_wifi_reload_without_shell():
     assert runner.calls[0][0] == ("uci", "-q", "batch")
     assert runner.calls[0][1] is not None
     assert runner.calls[1] == (("wifi", "reload"), None)
+
+
+def test_reconcile_applies_first_ssid_and_logs_capacity_warning(caplog):
+    update = parse_config_body(
+        {
+            "ssid_2G": {
+                "radioId": 0,
+                "ssid": [
+                    {"index": 1, "ssidName": "guest"},
+                    {"index": 2, "ssidName": "corp", "pskKey": "secret"},
+                ],
+            }
+        }
+    )
+    runner = RecordingRunner()
+    caplog.set_level("WARNING")
+
+    result = OpenWrtUciAdapter(runner).reconcile(update, _caps(max_ssids=1))
+
+    assert result.applied is True
+    assert result.changed is True
+    assert result.error == ""
+    assert "controller requested 2 SSIDs" in caplog.text
+    batch = runner.calls[0][1] or ""
+    assert "set wireless.default_radio0.disabled='1'" in batch
+    assert "set wireless.openomada_2g_1.ssid='guest'" in batch
+    assert "delete wireless.openomada_2g_2" in batch
+    assert "set wireless.openomada_2g_2.ssid='corp'" not in batch
 
 
 def test_reconcile_rejects_vlan_when_capability_is_disabled():
@@ -143,7 +172,7 @@ def test_reconcile_rejects_enabled_management_vlan_without_target(monkeypatch):
     assert runner.calls == []
 
 
-def test_reconcile_rejects_portal_free_policy_when_capability_is_disabled():
+def test_reconcile_accepts_portal_free_policy_as_passive_global_config():
     update = parse_config_body(
         {"portalFreePolicyConfig": {"portalFreePolicy": [{"value": "192.0.2.10"}]}}
     )
@@ -151,8 +180,8 @@ def test_reconcile_rejects_portal_free_policy_when_capability_is_disabled():
 
     result = OpenWrtUciAdapter(runner).reconcile(update, _caps(supports_portal=False))
 
-    assert result.applied is False
-    assert "portal free policy requested" in result.error
+    assert result.applied is True
+    assert result.changed is False
     assert runner.calls == []
 
 
