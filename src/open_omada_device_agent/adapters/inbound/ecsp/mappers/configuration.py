@@ -10,7 +10,7 @@ from .....contexts.clients.domain import (
 )
 from .....contexts.device.domain import LedConfig, WifiControlLedConfig
 from .....contexts.networking.domain import ManagementVlan, validate_vlan_id
-from .....contexts.portal.domain import PortalFreePolicy
+from .....contexts.portal.domain import PortalConfiguration, PortalFreePolicy
 from .....contexts.wireless.domain import (
     CaptivePortalIntent, RadioBand, RadioConfig, WirelessDhcpOption82Intent,
     WirelessNetwork, WirelessSecurity, WirelessVlanIntent, validate_ssid_name,
@@ -64,6 +64,7 @@ KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | ACK_ONLY_CONFIG_KEYS | PA
     "clientRateConfig",
     "led",
     "managementVlan",
+    "portalConfigList",
     "portalFreePolicyConfig",
     "wifiControlLed",
 }
@@ -99,6 +100,11 @@ def parse_config_body(body: Mapping[str, Any]) -> AccessPointConfigUpdate:
     raw_portal_free_policy = body.get("portalFreePolicyConfig")
     if raw_portal_free_policy is not None:
         portal_free_policy = _parse_portal_free_policy(raw_portal_free_policy)
+
+    portal_configs: tuple[PortalConfiguration, ...] = ()
+    raw_portal_configs = body.get("portalConfigList")
+    if raw_portal_configs is not None:
+        portal_configs = _parse_portal_configs(raw_portal_configs)
 
     led = None
     raw_led = body.get("led")
@@ -143,6 +149,7 @@ def parse_config_body(body: Mapping[str, Any]) -> AccessPointConfigUpdate:
         wlans=tuple(wlans),
         management_vlan=management_vlan,
         portal_free_policy=portal_free_policy,
+        portal_configs=portal_configs,
         led=led,
         wifi_control_led=wifi_control_led,
         client_configs=client_configs,
@@ -274,6 +281,42 @@ def _parse_portal_free_policy(raw: Any) -> PortalFreePolicy:
         ),
         raw=dict(data),
     )
+
+
+def _parse_portal_configs(raw: Any) -> tuple[PortalConfiguration, ...]:
+    return tuple(
+        _parse_portal_config_item(item)
+        for item in _iter_items(raw, "portalConfigList")
+    )
+
+
+def _parse_portal_config_item(raw: Any) -> PortalConfiguration:
+    data = _require_mapping(raw, "portalConfigList item")
+    return PortalConfiguration(
+        auth_type=_optional_int(data.get("authType")),
+        auth_timeout=_optional_int(data.get("authTimeout")),
+        portal_day=_optional_int(data.get("portalDay")),
+        portal_hour=_optional_int(data.get("portalHour")),
+        portal_min=_optional_int(data.get("portalMin")),
+        https_redirect_enable=_optional_bool(data.get("httpsRedirectEnable")),
+        redirect=_optional_bool(data.get("redirect")),
+        redirect_url=_optional_str(data.get("redirectUrl")),
+        auth_server_type=_optional_int(data.get("authServerType")),
+        ext_auth_server=_optional_str(data.get("extAuthServer")),
+        external_portal_server=_optional_str(data.get("externalPortalServer")),
+        portal_title=_optional_str(data.get("portalTitle")),
+        portal_accept=_optional_bool(data.get("portalAccept")),
+        ssid_list=tuple(str(value) for value in data.get("ssidList") or ()),
+        raw=_redact_portal_config(data),
+    )
+
+
+def _redact_portal_config(data: Mapping[str, Any]) -> dict[str, Any]:
+    redacted = dict(data)
+    for key in ("password", "radiusPassword"):
+        if key in redacted:
+            redacted[key] = "***"
+    return redacted
 
 
 def _parse_led(raw: Any) -> LedConfig:

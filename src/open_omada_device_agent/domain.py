@@ -13,7 +13,8 @@ from .contexts.networking.domain import (  # noqa: F401
     DhcpOption82, ManagementVlan, VlanAssignment, validate_vlan_id,
 )
 from .contexts.portal.domain import (  # noqa: F401
-    CaptivePortalBinding, PortalClientState, PortalFreePolicy,
+    CaptivePortalBinding, PortalClientState, PortalConfiguration,
+    PortalFreePolicy,
 )
 from .contexts.wireless.domain import (  # noqa: F401
     CaptivePortalIntent, RadioBand, RadioConfig, WirelessDhcpOption82Intent,

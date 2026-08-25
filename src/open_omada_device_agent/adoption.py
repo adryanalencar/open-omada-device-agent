@@ -275,6 +275,8 @@ def _describe_config_update(update: ApplyDeviceConfigurationCommand) -> str:
             f"l2:{len(update.portal_free_policy.layer2_rules)},"
             f"url:{len(update.portal_free_policy.url_rules)}"
         )
+    if update.portal_configs:
+        parts.append(f"portalConfigList={len(update.portal_configs)}")
     if update.client_configs:
         parts.append(f"clientConfig={len(update.client_configs)}")
     if update.client_operations:

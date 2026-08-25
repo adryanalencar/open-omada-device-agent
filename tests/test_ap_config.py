@@ -60,6 +60,22 @@ def test_parse_radio_wlan_vlan_and_portal_config_from_set_body():
                 "portalFreePolicy": [{"type": "ip", "value": "192.0.2.10"}],
                 "urlPortalFreePolicy": [{"host": "example.com"}],
             },
+            "portalConfigList": [
+                {
+                    "authType": 4,
+                    "authTimeout": 120,
+                    "httpsRedirectEnable": False,
+                    "redirect": True,
+                    "redirectUrl": "https://example.com/landing",
+                    "authServerType": 2,
+                    "externalPortalServer": "https://portal.example.com/login",
+                    "portalTitle": "Guest Portal",
+                    "portalAccept": True,
+                    "ssidList": ["lab-wlan"],
+                    "password": "do-not-copy",
+                    "radiusPassword": "do-not-copy",
+                }
+            ],
             "led": {"enable": "on"},
         }
     )
@@ -99,6 +115,13 @@ def test_parse_radio_wlan_vlan_and_portal_config_from_set_body():
     assert update.portal_free_policy is not None
     assert len(update.portal_free_policy.layer2_rules) == 1
     assert len(update.portal_free_policy.url_rules) == 1
+    assert len(update.portal_configs) == 1
+    assert update.portal_configs[0].auth_type == 4
+    assert update.portal_configs[0].external_portal_server == "https://portal.example.com/login"
+    assert update.portal_configs[0].redirect_url == "https://example.com/landing"
+    assert update.portal_configs[0].ssid_list == ("lab-wlan",)
+    assert update.portal_configs[0].raw["password"] == "***"
+    assert update.portal_configs[0].raw["radiusPassword"] == "***"
 
 
 def test_parse_set_request_requires_object_body():
