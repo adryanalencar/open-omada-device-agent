@@ -51,7 +51,10 @@ Omada Network Application `6.2.14.11` and an EAP110 v4-compatible AP profile.
 
 The capability table is intentionally conservative. The agent advertises only
 components whose lifecycle is currently understood well enough not to mislead
-the controller.
+the controller. On OpenWrt, `OMADA_MAX_SSIDS` is treated as a manual upper
+bound; when `iw list` reports no valid multi-interface combinations, the agent
+caps the advertised and applied SSID count to one AP interface so hostapd does
+not fail the whole radio.
 
 ## Protocol at a glance
 

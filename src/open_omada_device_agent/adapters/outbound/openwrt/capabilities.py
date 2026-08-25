@@ -6,7 +6,9 @@ answers a different question: what the local host can actually enforce.
 from __future__ import annotations
 
 import os
+import re
 import shutil
+import subprocess
 from collections.abc import Callable, Mapping
 
 from ....application.contracts import PlatformCapabilities
@@ -14,12 +16,14 @@ from ....contexts.wireless.domain import RadioBand
 
 
 CommandExists = Callable[[str], str | None]
+CommandOutput = Callable[[tuple[str, ...]], str | None]
 
 
 def detect_platform_capabilities(
     *,
     env: Mapping[str, str] | None = None,
     command_exists: CommandExists | None = None,
+    command_output: CommandOutput | None = None,
 ) -> PlatformCapabilities:
     values = env if env is not None else os.environ
     which = command_exists or shutil.which
@@ -36,6 +40,12 @@ def detect_platform_capabilities(
     radio_bands = _radio_bands(values.get("OMADA_RADIO_BANDS", "2g"))
     max_ssids = _int(values, "OMADA_MAX_SSIDS", 4)
     wlan_possible = openwrt and has_uci
+    max_ssids = _cap_max_ssids_by_iw(
+        max_ssids=max_ssids,
+        openwrt=openwrt,
+        command_exists=which,
+        command_output=command_output or _run_command_output,
+    )
 
     return PlatformCapabilities(
         platform="openwrt" if openwrt else platform,
@@ -138,3 +148,58 @@ def _int(env: Mapping[str, str], name: str, default: int) -> int:
     if raw is None or raw.strip() == "":
         return default
     return int(raw, 0)
+
+
+def _cap_max_ssids_by_iw(
+    *,
+    max_ssids: int,
+    openwrt: bool,
+    command_exists: CommandExists,
+    command_output: CommandOutput,
+) -> int:
+    configured = max(0, max_ssids)
+    if not openwrt or configured <= 1:
+        return configured
+
+    iw = command_exists("iw")
+    if iw is None:
+        return configured
+
+    detected = _iw_ap_interface_limit(command_output((iw, "list")) or "")
+    if detected is None:
+        return configured
+    return min(configured, max(0, detected))
+
+
+def _iw_ap_interface_limit(output: str) -> int | None:
+    if "interface combinations are not supported" in output:
+        return 1 if _iw_supports_ap_mode(output) else None
+
+    limits = []
+    for modes, limit in re.findall(r"#\{\s*([^}]*)\s*\}\s*<=\s*(\d+)", output):
+        if any(mode.strip() == "AP" for mode in modes.split(",")):
+            limits.append(int(limit))
+    if not limits:
+        return None
+    return max(limits)
+
+
+def _iw_supports_ap_mode(output: str) -> bool:
+    for line in output.splitlines():
+        if line.strip() == "* AP":
+            return True
+    return False
+
+
+def _run_command_output(args: tuple[str, ...]) -> str | None:
+    try:
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout

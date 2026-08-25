@@ -35,6 +35,75 @@ def test_detects_openwrt_wlan_capability_from_tools():
     assert caps.supports_client_operations is True
 
 
+def test_caps_openwrt_ssids_when_iw_reports_no_interface_combinations():
+    def which(name):
+        return f"/sbin/{name}" if name in {"uci", "ubus", "iw"} else None
+
+    def output(args):
+        assert args == ("/sbin/iw", "list")
+        return """
+Wiphy phy0
+        Supported interface modes:
+                 * IBSS
+                 * managed
+                 * AP
+                 * AP/VLAN
+                 * monitor
+        interface combinations are not supported
+"""
+
+    caps = detect_platform_capabilities(
+        env={
+            "OMADA_PLATFORM": "openwrt",
+            "OMADA_MAX_SSIDS": "4",
+        },
+        command_exists=which,
+        command_output=output,
+    )
+
+    assert caps.max_ssids == 1
+
+
+def test_caps_openwrt_ssids_from_iw_valid_interface_combinations():
+    def which(name):
+        return f"/usr/sbin/{name}" if name in {"uci", "ubus", "iw"} else None
+
+    caps = detect_platform_capabilities(
+        env={
+            "OMADA_PLATFORM": "openwrt",
+            "OMADA_MAX_SSIDS": "8",
+        },
+        command_exists=which,
+        command_output=lambda _args: """
+valid interface combinations:
+         * #{ managed } <= 1, #{ AP, mesh point } <= 2,
+           total <= 3, #channels <= 1
+""",
+    )
+
+    assert caps.max_ssids == 2
+
+
+def test_caps_openwrt_keeps_lower_configured_ssid_limit():
+    def which(name):
+        return f"/usr/sbin/{name}" if name in {"uci", "ubus", "iw"} else None
+
+    caps = detect_platform_capabilities(
+        env={
+            "OMADA_PLATFORM": "openwrt",
+            "OMADA_MAX_SSIDS": "2",
+        },
+        command_exists=which,
+        command_output=lambda _args: """
+valid interface combinations:
+         * #{ managed } <= 1, #{ AP } <= 8,
+           total <= 9, #channels <= 1
+""",
+    )
+
+    assert caps.max_ssids == 2
+
+
 def test_detects_opennds_as_openwrt_portal_engine():
     def which(name):
         return f"/usr/bin/{name}" if name in {"uci", "ubus", "opennds", "ndsctl"} else None

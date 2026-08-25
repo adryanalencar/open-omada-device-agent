@@ -91,7 +91,7 @@ OMADA_TLS_CA_FILE=/etc/open-omada/controller-ca.pem
 | --- | --- | --- |
 | `OMADA_PLATFORM` | `auto` | `auto`, `openwrt`, or `generic` capability detection |
 | `OMADA_RADIO_BANDS` | `2g` | Comma-separated supported AP bands: `2g,5g,5g2,6g` |
-| `OMADA_MAX_SSIDS` | `4` | Maximum SSIDs the platform adapter will accept |
+| `OMADA_MAX_SSIDS` | `4` | Manual upper bound for SSIDs the platform adapter will accept. On OpenWrt, `iw list` can reduce this automatically when the radio does not support multiple AP interfaces. |
 | `OMADA_CAP_WLAN` | auto on OpenWrt with `uci` | Enable WLAN/radio UCI reconciliation |
 | `OMADA_CAP_WPA2_PSK` | auto on OpenWrt with `uci` | Accept WPA2-PSK WLANs |
 | `OMADA_CAP_WPA3_PSK` | `false` | Accept WPA3-PSK WLANs |

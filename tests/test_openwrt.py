@@ -86,7 +86,7 @@ def test_reconcile_runs_uci_batch_and_wifi_reload_without_shell():
     assert runner.calls[1] == (("wifi", "reload"), None)
 
 
-def test_reconcile_applies_first_ssid_and_reports_capacity_warning():
+def test_reconcile_applies_first_ssid_and_logs_capacity_warning(caplog):
     update = parse_config_body(
         {
             "ssid_2G": {
@@ -99,12 +99,14 @@ def test_reconcile_applies_first_ssid_and_reports_capacity_warning():
         }
     )
     runner = RecordingRunner()
+    caplog.set_level("WARNING")
 
     result = OpenWrtUciAdapter(runner).reconcile(update, _caps(max_ssids=1))
 
     assert result.applied is True
     assert result.changed is True
-    assert "controller requested 2 SSIDs" in result.error
+    assert result.error == ""
+    assert "controller requested 2 SSIDs" in caplog.text
     batch = runner.calls[0][1] or ""
     assert "set wireless.default_radio0.disabled='1'" in batch
     assert "set wireless.openomada_2g_1.ssid='guest'" in batch

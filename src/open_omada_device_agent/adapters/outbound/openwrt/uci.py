@@ -5,6 +5,7 @@ domain objects; this adapter turns supported domain objects into UCI changes.
 """
 from __future__ import annotations
 
+import logging
 import re
 import subprocess
 from collections.abc import Sequence
@@ -16,6 +17,9 @@ from ....application.commands import ApplyDeviceConfigurationCommand
 from ....contexts.wireless.domain import RadioBand, RadioConfig, WirelessNetwork
 
 from ....application.contracts import PlatformCapabilities
+
+
+log = logging.getLogger("open_omada.openwrt.uci")
 
 
 class CommandRunner(Protocol):
@@ -72,6 +76,8 @@ class OpenWrtUciAdapter:
         capabilities: PlatformCapabilities,
     ) -> ReconciliationResult:
         capacity_warning = _capacity_warning(update, capabilities)
+        if capacity_warning:
+            log.warning(capacity_warning)
         errors = validate_update(
             update,
             capabilities,
@@ -95,7 +101,6 @@ class OpenWrtUciAdapter:
             return ReconciliationResult(
                 applied=True,
                 changed=False,
-                error=capacity_warning,
             )
 
         result = self._runner.run(["uci", "-q", "batch"], input_text="\n".join(batch) + "\n")
@@ -119,7 +124,6 @@ class OpenWrtUciAdapter:
         return ReconciliationResult(
             applied=True,
             changed=True,
-            error=capacity_warning,
             command_count=len(batch),
         )
 
