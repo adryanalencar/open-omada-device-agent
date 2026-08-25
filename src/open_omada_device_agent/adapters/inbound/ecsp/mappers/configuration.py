@@ -175,9 +175,7 @@ def _parse_ssid_item(
 ) -> WirelessNetwork:
     data = _require_mapping(raw, f"{band.value} SSID item")
     name = validate_ssid_name(str(data.get("ssidName") or ""))
-    vlan_id = _optional_int(data.get("vlanId"))
-    if vlan_id is not None:
-        validate_vlan_id(vlan_id)
+    vlan_id = _optional_vlan_id(data.get("vlanId"))
     fast_transition = data.get("fastTransition")
     return WirelessNetwork(
         band=band,
@@ -247,9 +245,7 @@ def _parse_dhcp_option82(raw: Any) -> WirelessDhcpOption82Intent | None:
 def _parse_management_vlan(raw: Any) -> ManagementVlan:
     data = _require_mapping(raw, "management VLAN config")
     enabled = _enabled_string(data.get("managementVlanEnable"))
-    vlan_id = _optional_int(data.get("managementVlanId"))
-    if enabled and vlan_id is not None:
-        validate_vlan_id(vlan_id)
+    vlan_id = _optional_vlan_id(data.get("managementVlanId"))
     return ManagementVlan(enabled=enabled, vlan_id=vlan_id, raw=dict(data))
 
 
@@ -380,6 +376,13 @@ def _optional_int(value: Any) -> int | None:
     if value is None or value == "":
         return None
     return int(value)
+
+
+def _optional_vlan_id(value: Any) -> int | None:
+    vlan_id = _optional_int(value)
+    if vlan_id in {None, 0}:
+        return None
+    return validate_vlan_id(vlan_id)
 
 
 def _optional_str(value: Any) -> str | None:

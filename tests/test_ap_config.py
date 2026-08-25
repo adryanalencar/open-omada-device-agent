@@ -111,6 +111,14 @@ def test_parse_ssid_rejects_invalid_vlan():
         parse_config_body({"ssid_5G": {"ssid": [{"ssidName": "bad", "vlanId": 5000}]}})
 
 
+def test_parse_ssid_vlan_zero_as_no_vlan():
+    update = parse_config_body(
+        {"ssid_2G": {"ssid": [{"ssidName": "corp", "vlanId": 0}]}}
+    )
+
+    assert update.wlans[0].vlan.vlan_id is None
+
+
 def test_parse_wifi_control_led_config():
     update = parse_config_body({"wifiControlLed": {"enable": "off", "isPressed": True}})
 
