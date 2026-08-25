@@ -218,9 +218,9 @@ def _parse_ssid_item(
                 else None
             ),
             radius_profile_id=_optional_str(data.get("wpaRadiusProfileId")),
-            radius_auth=_optional_mapping(data.get("radiusAuth")),
-            radius_accounting=_optional_mapping(data.get("radiusAccounting")),
-            radius_mac_auth=_optional_mapping(data.get("macAuth")),
+            radius_auth=_optional_active_mapping(data.get("radiusAuth")),
+            radius_accounting=_optional_active_mapping(data.get("radiusAccounting")),
+            radius_mac_auth=_optional_active_mapping(data.get("macAuth")),
             pmf_mode=_optional_int(data.get("pmfMode")),
             fast_roaming=(
                 _optional_bool(fast_transition.get("enable11r"))
@@ -382,6 +382,16 @@ def _require_mapping(value: Any, label: str) -> Mapping[str, Any]:
 
 def _optional_mapping(value: Any) -> Mapping[str, Any] | None:
     return dict(value) if isinstance(value, Mapping) else None
+
+
+def _optional_active_mapping(value: Any) -> Mapping[str, Any] | None:
+    data = _optional_mapping(value)
+    if not data:
+        return None
+    for key in ("enable", "enabled", "radiusEnable", "authEnable", "accountingEnable"):
+        if key in data and not _optional_bool(data.get(key)):
+            return None
+    return data
 
 
 def _optional_int(value: Any) -> int | None:

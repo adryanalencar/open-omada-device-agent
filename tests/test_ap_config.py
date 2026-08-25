@@ -119,6 +119,23 @@ def test_parse_ssid_vlan_zero_as_no_vlan():
     assert update.wlans[0].vlan.vlan_id is None
 
 
+def test_parse_disabled_mac_auth_as_no_radius_request():
+    update = parse_config_body(
+        {
+            "ssid_2G": {
+                "ssid": [
+                    {
+                        "ssidName": "guest",
+                        "macAuth": {"enable": False},
+                    }
+                ]
+            }
+        }
+    )
+
+    assert update.wlans[0].security.radius_mac_auth is None
+
+
 def test_parse_wifi_control_led_config():
     update = parse_config_body({"wifiControlLed": {"enable": "off", "isPressed": True}})
 
