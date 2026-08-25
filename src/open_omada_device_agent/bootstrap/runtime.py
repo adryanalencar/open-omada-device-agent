@@ -39,6 +39,7 @@ def build_runtime(settings: AgentSettings) -> AgentRuntime:
             settings.public_ip_lookup_url,
             settings.public_ip_lookup_timeout,
         ),
+        capabilities=capabilities,
     )
     return AgentRuntime(
         configuration=ApplyDeviceConfiguration(

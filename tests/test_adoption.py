@@ -1,6 +1,10 @@
 import time
 
 from open_omada_device_agent import config
+from open_omada_device_agent.adapters.outbound.openwrt.device_profile import (
+    GenericOpenWrtAccessPointProfile,
+)
+from open_omada_device_agent.application.contracts import PlatformCapabilities
 from open_omada_device_agent.bootstrap import AgentSettings, build_runtime
 from open_omada_device_agent.adoption import (
     CONFIG_ERROR,
@@ -18,7 +22,8 @@ from open_omada_device_agent.adoption import (
     _set_response_body,
 )
 from open_omada_device_agent.discovery import build_discovery
-from open_omada_device_agent.capabilities import AP_COMPONENTS_V2
+from open_omada_device_agent.capabilities import AP_COMPONENTS_V2, AP_WLAN_COMPONENTS_V2
+from open_omada_device_agent.contexts.wireless.domain import RadioBand
 from open_omada_device_agent.ap_config import parse_config_body
 from open_omada_device_agent.ecsp import MessageType, decode_frame
 
@@ -36,10 +41,11 @@ def test_device_negotiation_has_required_non_null_v2_fields():
 
     assert body["configVersion"] == 0
     assert body["devCap"] == {}
-    assert body["components_v2"] == AP_COMPONENTS_V2
+    for key, version in AP_COMPONENTS_V2.items():
+        assert body["components_v2"][key] == version
     assert body["components_v2"]
-    assert body["radioCap"] == []
-    assert body["channelInfo"] == []
+    assert isinstance(body["radioCap"], list)
+    assert isinstance(body["channelInfo"], list)
     assert body["controllerSetting"] == {
         "controllerId": "0123456789abcdef0123456789abcdef"
     }
@@ -50,11 +56,50 @@ def test_device_negotiation_has_required_non_null_v2_fields():
 
 
 def test_advertised_v2_component_versions_have_ecsp_major_minor_shape():
-    for name, version in AP_COMPONENTS_V2.items():
+    for name, version in (AP_COMPONENTS_V2 | AP_WLAN_COMPONENTS_V2).items():
         major, minor = version.split(".")
         assert name
         assert major.isdigit()
         assert minor.isdigit()
+
+
+def test_device_negotiation_advertises_openwrt_wlan_capabilities():
+    profile = GenericOpenWrtAccessPointProfile(
+        AgentSettings.from_environment(),
+        ip_address=lambda: "192.0.2.10",
+        capabilities=PlatformCapabilities(
+            platform="openwrt",
+            has_uci=True,
+            has_ubus=True,
+            radio_bands=(RadioBand.TWO_G,),
+            max_ssids=4,
+            supports_wlan_config=True,
+            supports_wpa2_psk=True,
+            supports_dhcp_tracking=True,
+        ),
+    )
+
+    body = _device_negotiation_body("controller-id", profile=profile)
+
+    assert body["components_v2"]["wlanBasic"] == "2.2"
+    assert body["components_v2"]["ssid"] == "2.20"
+    assert body["components_v2"]["wlanInform"] == "2.1"
+    assert body["components_v2"]["ssidInform"] == "2.0"
+    assert body["components_v2"]["clientInform"] == "2.0"
+    assert body["radioCap"][0]["radioId"] == 0
+    assert body["radioCap"][0]["supportSsidNum"] == 4
+    assert body["channelInfo"][0]["radioId"] == 0
+    assert body["channelInfo"][0]["band"] == "2.4G"
+    assert body["channelInfo"][0]["channelList"][0] == {
+        "fr": 2412,
+        "vl": 1,
+        "mPow": 20,
+        "cFlag": 393216,
+        "dFlag": 0,
+        "lm": 1,
+        "mPowOd": 0,
+        "cFlagOd": 0,
+    }
 
 
 def test_post_adoption_inform_is_not_factory_and_requests_reply_when_asked():

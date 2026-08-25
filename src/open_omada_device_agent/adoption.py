@@ -130,8 +130,8 @@ def _device_negotiation_body(
         "controllerSetting": {"controllerId": controller_id},
         "components": {},
         "components_v2": dict(profile.components_v2()),
-        "channelInfo": [],
-        "radioCap": [],
+        "channelInfo": list(profile.channel_info()),
+        "radioCap": list(profile.radio_cap()),
         "deviceMisc": profile.device_misc(),
     }
 
