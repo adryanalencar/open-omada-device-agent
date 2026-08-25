@@ -45,15 +45,22 @@ class ApplyDeviceConfiguration:
         changed = False
         capabilities = self._detect()
         ports = (self._platform_ports if has_platform else ()) + (self._command_ports if has_commands else ())
+        soft_errors: list[str] = []
         for port in ports:
             result = port.reconcile(update, capabilities)
             if not result.applied:
                 return ApplyConfigurationResult(False, changed, result.error)
             changed = changed or result.changed
+            if result.error:
+                soft_errors.append(result.error)
         if update.ack_only_keys:
             keys = ",".join(update.ack_only_keys)
             if not self._allow_ack_only_config:
-                suffix = "; supported domains were applied first" if changed else ""
-                return ApplyConfigurationResult(False, changed, f"ack-only control-plane keys require OMADA_LAB_ACK_CONTROL_PLANE_CONFIG=true: {keys}{suffix}")
+                message = f"ack-only control-plane keys require OMADA_LAB_ACK_CONTROL_PLANE_CONFIG=true: {keys}"
+                if changed:
+                    message = f"{message}; supported domains were applied first"
+                return ApplyConfigurationResult(False, changed, "; ".join((*soft_errors, message)))
             log.warning("Acknowledging controller-side AP config without local OpenWrt changes: %s", keys)
+        if soft_errors:
+            return ApplyConfigurationResult(False, changed, "; ".join(soft_errors))
         return ApplyConfigurationResult(True, changed)

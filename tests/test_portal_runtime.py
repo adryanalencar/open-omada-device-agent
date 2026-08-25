@@ -23,6 +23,7 @@ def _caps(**overrides):
     values = {
         "platform": "openwrt",
         "has_nft": True,
+        "max_ssids": 4,
         "supports_portal": True,
     }
     values.update(overrides)
@@ -79,6 +80,29 @@ def test_portal_runtime_noops_without_portal_config():
     runner = RecordingRunner()
 
     result = OpenWrtPortalRuntime(runner, interface="wlan0").reconcile(update, _caps())
+
+    assert result.applied is True
+    assert result.changed is False
+    assert runner.calls == []
+
+
+def test_portal_runtime_ignores_portal_wlan_beyond_platform_limit():
+    update = parse_config_body(
+        {
+            "ssid_2G": {
+                "ssid": [
+                    {"ssidName": "corp"},
+                    {"ssidName": "guest", "portal": True},
+                ]
+            }
+        }
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtPortalRuntime(runner, interface="wlan0").reconcile(
+        update,
+        _caps(max_ssids=1),
+    )
 
     assert result.applied is True
     assert result.changed is False

@@ -40,7 +40,7 @@ class OpenWrtPortalRuntime:
         update: ApplyDeviceConfigurationCommand,
         capabilities: PlatformCapabilities,
     ) -> PortalRuntimeResult:
-        if not _needs_portal_runtime(update):
+        if not _needs_portal_runtime(update, capabilities):
             return PortalRuntimeResult(applied=True, changed=False)
         if not capabilities.supports_portal:
             return PortalRuntimeResult(
@@ -63,8 +63,12 @@ class OpenWrtPortalRuntime:
         return PortalRuntimeResult(applied=True, changed=True)
 
 
-def _needs_portal_runtime(update: ApplyDeviceConfigurationCommand) -> bool:
-    return any(wlan.portal.enabled for wlan in update.wlans)
+def _needs_portal_runtime(
+    update: ApplyDeviceConfigurationCommand,
+    capabilities: PlatformCapabilities,
+) -> bool:
+    wlans = update.wlans[: max(0, capabilities.max_ssids)]
+    return any(wlan.portal.enabled for wlan in wlans)
 
 
 def _walled_garden_ipv4(policy: PortalFreePolicy | None) -> tuple[str, ...]:

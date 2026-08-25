@@ -62,6 +62,7 @@ def test_builds_idempotent_uci_batch_for_radio_and_psk_wlan():
     assert "set wireless.radio0.disabled='0'" in batch
     assert "set wireless.radio0.channel='11'" in batch
     assert "set wireless.radio0.htmode='HT20'" in batch
+    assert "set wireless.default_radio0.disabled='1'" in batch
     assert "delete wireless.openomada_2g_1" in batch
     assert "set wireless.openomada_2g_1=wifi-iface" in batch
     assert "set wireless.openomada_2g_1.ssid='Open Omada'" in batch
@@ -83,6 +84,32 @@ def test_reconcile_runs_uci_batch_and_wifi_reload_without_shell():
     assert runner.calls[0][0] == ("uci", "-q", "batch")
     assert runner.calls[0][1] is not None
     assert runner.calls[1] == (("wifi", "reload"), None)
+
+
+def test_reconcile_applies_first_ssid_and_reports_capacity_warning():
+    update = parse_config_body(
+        {
+            "ssid_2G": {
+                "radioId": 0,
+                "ssid": [
+                    {"index": 1, "ssidName": "guest"},
+                    {"index": 2, "ssidName": "corp", "pskKey": "secret"},
+                ],
+            }
+        }
+    )
+    runner = RecordingRunner()
+
+    result = OpenWrtUciAdapter(runner).reconcile(update, _caps(max_ssids=1))
+
+    assert result.applied is True
+    assert result.changed is True
+    assert "controller requested 2 SSIDs" in result.error
+    batch = runner.calls[0][1] or ""
+    assert "set wireless.default_radio0.disabled='1'" in batch
+    assert "set wireless.openomada_2g_1.ssid='guest'" in batch
+    assert "delete wireless.openomada_2g_2" in batch
+    assert "set wireless.openomada_2g_2.ssid='corp'" not in batch
 
 
 def test_reconcile_rejects_vlan_when_capability_is_disabled():

@@ -131,6 +131,28 @@ def test_apply_configuration_applies_supported_domains_before_ack_only_failure()
     assert "supported domains were applied first" in result.error
 
 
+def test_apply_configuration_propagates_successful_partial_adapter_warning():
+    platform = RecordingPort(Result(changed=True, error="partial platform apply"))
+    use_case = ApplyDeviceConfiguration(
+        capability_detector=lambda: "host capabilities",
+        platform_ports=(platform,),
+        command_ports=(),
+    )
+
+    result = use_case.execute(
+        AccessPointConfigUpdate(
+            sequence_id=1,
+            config_version=2,
+            config_version_inc=None,
+            radios=(RadioConfig(RadioBand.TWO_G),),
+        )
+    )
+
+    assert result.applied is False
+    assert result.changed is True
+    assert result.error == "partial platform apply"
+
+
 def test_apply_configuration_accepts_ack_only_keys_when_lab_flag_is_enabled():
     use_case = ApplyDeviceConfiguration(
         capability_detector=object,
