@@ -289,6 +289,8 @@ def _describe_config_update(update: ApplyDeviceConfigurationCommand) -> str:
             f"action:{update.client_rate_config.action},"
             f"limits:{len(update.client_rate_config.limits)}"
         )
+    if update.passive_keys:
+        parts.append(f"passive={','.join(update.passive_keys)}")
     if update.ack_only_keys:
         parts.append(f"ackOnly={','.join(update.ack_only_keys)}")
     if update.unhandled_keys:

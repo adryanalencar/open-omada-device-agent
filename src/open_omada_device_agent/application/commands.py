@@ -22,6 +22,7 @@ class ApplyDeviceConfigurationCommand:
     client_configs: tuple[ClientAuthConfig, ...] = ()
     client_operations: tuple[ClientControlOperation, ...] = ()
     client_rate_config: ClientRateConfig | None = None
+    passive_keys: tuple[str, ...] = ()
     ack_only_keys: tuple[str, ...] = ()
     unhandled_keys: tuple[str, ...] = ()
     raw_body: Mapping[str, Any] = field(default_factory=dict)

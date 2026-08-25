@@ -208,6 +208,18 @@ def test_parse_initial_controller_defaults_as_ack_only_config():
     )
 
 
+def test_parse_scheduler_and_wireless_advanced_as_passive_config():
+    update = parse_config_body(
+        {
+            "schedulerAssoc": [{"id": 1, "profileId": 2}],
+            "wirelessAdv_2G": {"radioId": 0, "dtimPeriod": 1, "beaconInterval": 100},
+        }
+    )
+
+    assert update.unhandled_keys == ()
+    assert update.passive_keys == ("schedulerAssoc", "wirelessAdv_2G")
+
+
 def test_validate_ssid_rejects_names_over_32_bytes():
     with pytest.raises(ValueError, match="32 UTF-8 bytes"):
         validate_ssid_name("x" * 33)

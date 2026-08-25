@@ -46,7 +46,18 @@ ACK_ONLY_CONFIG_KEYS = {
     "ssh",
 }
 
-KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | ACK_ONLY_CONFIG_KEYS | {
+# These AP config domains are accepted as known but currently have no local
+# OpenWrt side effect. They should not block the actionable SSID/radio domains
+# carried by the same SET_REQUEST.
+PASSIVE_CONFIG_KEYS = {
+    "schedulerAssoc",
+    "wirelessAdv_2G",
+    "wirelessAdv_5G",
+    "wirelessAdv_5G2",
+    "wirelessAdv_6G",
+}
+
+KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | ACK_ONLY_CONFIG_KEYS | PASSIVE_CONFIG_KEYS | {
     "clientConfig",
     "clientOperation",
     "clientOperation_cmd",
@@ -137,6 +148,7 @@ def parse_config_body(body: Mapping[str, Any]) -> AccessPointConfigUpdate:
         client_configs=client_configs,
         client_operations=tuple(client_operations),
         client_rate_config=client_rate_config,
+        passive_keys=tuple(sorted(key for key in body if key in PASSIVE_CONFIG_KEYS)),
         ack_only_keys=tuple(sorted(key for key in body if key in ACK_ONLY_CONFIG_KEYS)),
         unhandled_keys=unhandled,
         raw_body=dict(body),

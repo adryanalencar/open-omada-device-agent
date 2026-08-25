@@ -88,6 +88,49 @@ def test_apply_configuration_requires_lab_flag_for_ack_only_keys():
     assert "OMADA_LAB_ACK_CONTROL_PLANE_CONFIG" in result.error
 
 
+def test_apply_configuration_accepts_passive_keys_without_lab_flag():
+    use_case = ApplyDeviceConfiguration(
+        capability_detector=object,
+        platform_ports=(),
+        command_ports=(),
+    )
+
+    result = use_case.execute(
+        AccessPointConfigUpdate(
+            sequence_id=1,
+            config_version=2,
+            config_version_inc=None,
+            passive_keys=("wirelessAdv_2G",),
+        )
+    )
+
+    assert result.applied is True
+
+
+def test_apply_configuration_applies_supported_domains_before_ack_only_failure():
+    platform = RecordingPort(Result(changed=True))
+    use_case = ApplyDeviceConfiguration(
+        capability_detector=lambda: "host capabilities",
+        platform_ports=(platform,),
+        command_ports=(),
+    )
+
+    result = use_case.execute(
+        AccessPointConfigUpdate(
+            sequence_id=1,
+            config_version=2,
+            config_version_inc=None,
+            radios=(RadioConfig(RadioBand.TWO_G),),
+            ack_only_keys=("ssh",),
+        )
+    )
+
+    assert result.applied is False
+    assert result.changed is True
+    assert len(platform.calls) == 1
+    assert "supported domains were applied first" in result.error
+
+
 def test_apply_configuration_accepts_ack_only_keys_when_lab_flag_is_enabled():
     use_case = ApplyDeviceConfiguration(
         capability_detector=object,
