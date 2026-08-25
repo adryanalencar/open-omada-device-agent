@@ -228,6 +228,9 @@ Validated behavior today:
   URL in `portalFreePolicyConfig`, the agent writes an openNDS ThemeSpec that
   redirects the captive browser to that Omada-configured URL instead of the
   stock openNDS splash.
+- The openNDS adapter disables `allow_preemptive_authentication` and relies on
+  the classic HTTP redirect path; this avoids Android CPD/RFC8910 opening a
+  generic status page instead of the Omada-configured portal URL.
 - Omada `clientConfig.unauth` is translated into `ndsctl auth/deauth`.
 - When `conntrack` is installed, deauth also clears flows for the client's IP
   so previously authenticated sessions stop immediately.

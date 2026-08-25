@@ -158,6 +158,8 @@ With openNDS installed, the agent:
 - writes `/usr/lib/opennds/theme_openomada_redirect.sh` and sets
   `login_option_enabled=3` when Omada provides a portal URL through
   `portalConfigList` or a `/portal/...` free-policy URL;
+- sets `allow_preemptive_authentication=0` so clients use the classic HTTP
+  redirect path instead of stopping at the openNDS RFC8910 status page;
 - applies `clientConfig.unauth=false` with `ndsctl auth`;
 - applies `clientConfig.unauth=true` with `ndsctl deauth`;
 - clears conntrack entries for the client IP after deauth when `conntrack` is
