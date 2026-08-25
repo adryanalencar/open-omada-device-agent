@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -130,7 +131,13 @@ class OpenWrtClientControlAdapter:
     ) -> tuple[str, ...]:
         errors: list[str] = []
         if update.client_configs:
-            errors.append("clientConfig unauth reconciliation is not implemented")
+            if not capabilities.has_opennds:
+                errors.append("clientConfig unauth reconciliation requires openNDS")
+            for item in update.client_configs:
+                try:
+                    MacAddress(item.client_mac)
+                except ValueError:
+                    errors.append(f"invalid clientConfig MAC: {item.client_mac!r}")
         if update.client_rate_config is not None:
             if not capabilities.supports_client_rate_limits:
                 errors.append("client rate-limit requested but platform capability is disabled")
@@ -206,10 +213,26 @@ class OpenWrtClientControlAdapter:
         errors = self.validate_update(update, capabilities)
         if errors:
             return DeviceCommandResult(applied=False, error="; ".join(errors))
-        if not update.client_operations and update.client_rate_config is None:
+        if (
+            not update.client_configs
+            and not update.client_operations
+            and update.client_rate_config is None
+        ):
             return DeviceCommandResult(applied=True, changed=False)
 
         changed = False
+        for item in update.client_configs:
+            if item.unauthenticated is None:
+                continue
+            mac = MacAddress(item.client_mac).value
+            result = (
+                self._deauthenticate_portal_client(mac)
+                if item.unauthenticated
+                else self._authenticate_portal_client(mac)
+            )
+            if not result.applied:
+                return result
+            changed = changed or result.changed
         if update.client_rate_config is not None:
             result = self._apply_client_rate_limits(update.client_rate_config)
             if not result.applied:
@@ -282,6 +305,55 @@ class OpenWrtClientControlAdapter:
                 error=(result.stderr or result.stdout or "ubus hostapd del_client failed").strip(),
             )
         return DeviceCommandResult(applied=True, changed=True)
+
+    def _authenticate_portal_client(self, mac: str) -> DeviceCommandResult:
+        result = self._runner.run(["ndsctl", "auth", mac, "", "", "", "", "", ""])
+        if result.returncode != 0:
+            return DeviceCommandResult(
+                applied=False,
+                error=(result.stderr or result.stdout or "ndsctl auth failed").strip(),
+            )
+        return DeviceCommandResult(applied=True, changed=True)
+
+    def _deauthenticate_portal_client(self, mac: str) -> DeviceCommandResult:
+        client_ip = self._portal_client_ip(mac)
+        result = self._runner.run(["ndsctl", "deauth", mac])
+        if result.returncode != 0:
+            return DeviceCommandResult(
+                applied=False,
+                error=(result.stderr or result.stdout or "ndsctl deauth failed").strip(),
+            )
+        if client_ip is not None:
+            self._flush_portal_client_conntrack(client_ip)
+        return DeviceCommandResult(applied=True, changed=True)
+
+    def _portal_client_ip(self, mac: str) -> str | None:
+        result = self._runner.run(["ndsctl", "json", mac])
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(payload, dict):
+            return None
+        raw_clients = payload.get("clients")
+        if not isinstance(raw_clients, dict):
+            return None
+        raw_client = raw_clients.get(mac)
+        if not isinstance(raw_client, dict):
+            return None
+        raw_ip = raw_client.get("ip")
+        if raw_ip is None:
+            return None
+        try:
+            return str(ipaddress.ip_address(str(raw_ip)))
+        except ValueError:
+            return None
+
+    def _flush_portal_client_conntrack(self, client_ip: str) -> None:
+        for direction in ("-s", "-d"):
+            self._runner.run(["conntrack", "-D", direction, client_ip])
 
     def _set_client_block(self, mac: str, *, blocked: bool) -> DeviceCommandResult:
         ensured = self._ensure_client_block_table()
