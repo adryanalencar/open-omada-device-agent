@@ -43,6 +43,16 @@ class AgentSettings:
     portal_redirect_port: int
     management_vlan_interface: str
     management_vlan_device: str
+    openwrt_bootstrap: bool
+    openwrt_bootstrap_lan: bool
+    openwrt_lan_interface: str
+    openwrt_lan_bridge: str
+    openwrt_lan_ipaddr: str
+    openwrt_bootstrap_opennds: bool
+    opennds_gateway_port: int
+    opennds_gateway_name: str
+    openwrt_enable_wan_management: bool
+    openwrt_wan_zone: str
     lab_ack_control_plane_config: bool
     ecsp_version: str
     ecsp_ver_cap: int
@@ -60,5 +70,15 @@ class AgentSettings:
             raise RuntimeError("OMADA_CONTROLLER_HOST is required")
         if not (1 <= self.discovery_port <= 65535 and 1 <= self.manage_port <= 65535):
             raise RuntimeError("OMADA discovery/manage ports must be between 1 and 65535")
+        if self.openwrt_bootstrap and not (1 <= self.opennds_gateway_port <= 65535):
+            raise RuntimeError("OMADA_OPENNDS_GATEWAY_PORT must be between 1 and 65535")
+        if self.openwrt_bootstrap_lan and (
+            not self.openwrt_lan_interface or not self.openwrt_lan_bridge
+        ):
+            raise RuntimeError(
+                "OMADA_OPENWRT_LAN_INTERFACE and OMADA_OPENWRT_LAN_BRIDGE are required"
+            )
+        if self.openwrt_enable_wan_management and not self.openwrt_wan_zone:
+            raise RuntimeError("OMADA_OPENWRT_WAN_ZONE is required")
         if self.tls_ca_file is not None and not self.tls_ca_file.exists():
             raise RuntimeError(f"OMADA_TLS_CA_FILE does not exist: {self.tls_ca_file}")

@@ -30,7 +30,7 @@ identifiers.
 | Radio telemetry | 🟡 | Basic OpenWrt wireless settings from `ubus`; radio traffic counters not emitted until complete counters are available |
 | SSID telemetry | 🟡 | OpenWrt SSID/client counts and optional interface counters |
 | Client telemetry | 🟡 | DHCP lease backed IP/hostname merged with hostapd station RSSI/rate/traffic where available |
-| Captive portal | 🟡 | openNDS enforcement, free-policy walled garden, ThemeSpec redirect to Omada portal URLs, `clientConfig.unauth`, and client-state reporting are available on OpenWrt; signed `/portal/entry` parameter parity is still incomplete |
+| Captive portal | 🟡 | openNDS enforcement, free-policy walled garden, TP-Link EAP External Portal query redirects, `clientConfig.unauth`, and client-state reporting are available on OpenWrt; hosted portal UI and Controller `/hotspot/extPortal/auth` submission are external to the agent |
 | Mesh | 🚧 | Not implemented |
 | Switch profile | 🚧 | Not implemented |
 | Gateway profile | 🚧 | Not implemented |

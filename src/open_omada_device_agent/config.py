@@ -94,6 +94,20 @@ PORTAL_REDIRECT_PORT = _int("OMADA_PORTAL_REDIRECT_PORT", 8080)
 MANAGEMENT_VLAN_INTERFACE = os.getenv("OMADA_MANAGEMENT_VLAN_INTERFACE", "").strip()
 MANAGEMENT_VLAN_DEVICE = os.getenv("OMADA_MANAGEMENT_VLAN_DEVICE", "").strip()
 
+# OpenWrt bootstrap. These settings are applied idempotently before ECSP
+# discovery so a Wi-Fi-only OpenWrt device can create br-lan, bind openNDS, and
+# optionally expose lab management on the WAN uplink.
+OPENWRT_BOOTSTRAP = _bool("OMADA_OPENWRT_BOOTSTRAP", True)
+OPENWRT_BOOTSTRAP_LAN = _bool("OMADA_OPENWRT_BOOTSTRAP_LAN", True)
+OPENWRT_LAN_INTERFACE = os.getenv("OMADA_OPENWRT_LAN_INTERFACE", "lan").strip()
+OPENWRT_LAN_BRIDGE = os.getenv("OMADA_OPENWRT_LAN_BRIDGE", "br-lan").strip()
+OPENWRT_LAN_IPADDR = os.getenv("OMADA_OPENWRT_LAN_IPADDR", "192.168.1.1/24").strip()
+OPENWRT_BOOTSTRAP_OPENNDS = _bool("OMADA_OPENWRT_BOOTSTRAP_OPENNDS", True)
+OPENNDS_GATEWAY_PORT = _int("OMADA_OPENNDS_GATEWAY_PORT", 2050)
+OPENNDS_GATEWAY_NAME = os.getenv("OMADA_OPENNDS_GATEWAY_NAME", "").strip()
+OPENWRT_ENABLE_WAN_MANAGEMENT = _bool("OMADA_OPENWRT_ENABLE_WAN_MANAGEMENT", False)
+OPENWRT_WAN_ZONE = os.getenv("OMADA_OPENWRT_WAN_ZONE", "wan").strip()
+
 # Lab/research compatibility. When enabled, known controller-side/default
 # configuration families that currently have no local OpenWrt side effect are
 # acknowledged instead of failing the entire SET_REQUEST batch. Keep disabled
@@ -105,10 +119,11 @@ ECSP_VERSION = os.getenv("OMADA_ECSP_VERSION", "2.3.0")
 ECSP_VER_CAP = _int("OMADA_ECSP_VER_CAP", 2)
 
 # Controller/site routing. A site-scoped discovery destination is a 24-character
-# Site ID; the logical controller identity remains separate.
+# Site ID; the Omada external portal query needs the human-readable site name.
 CONTROLLER_ID = os.getenv("OMADA_CONTROLLER_ID", "").strip()
 DEST_OMADAC_ID = os.getenv("OMADA_DEST_OMADAC_ID", "").strip()
 SITE_ID = os.getenv("OMADA_SITE_ID", "").strip()
+SITE_NAME = os.getenv("OMADA_SITE_NAME", "").strip()
 
 # Legacy V2 Device Account authentication. No password default is provided and
 # credentials are never persisted to managed state.

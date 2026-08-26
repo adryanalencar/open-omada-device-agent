@@ -304,6 +304,7 @@ def _parse_portal_config_item(raw: Any) -> PortalConfiguration:
         auth_server_type=_optional_int(data.get("authServerType")),
         ext_auth_server=_optional_str(data.get("extAuthServer")),
         external_portal_server=_optional_str(data.get("externalPortalServer")),
+        site_name=_optional_str(data.get("siteName") or data.get("site")),
         portal_title=_optional_str(data.get("portalTitle")),
         portal_accept=_optional_bool(data.get("portalAccept")),
         ssid_list=tuple(str(value) for value in data.get("ssidList") or ()),

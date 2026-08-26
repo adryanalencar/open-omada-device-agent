@@ -105,6 +105,31 @@ OMADA_TLS_CA_FILE=/etc/open-omada/controller-ca.pem
 | `OMADA_CAP_CLIENT_OPERATIONS` | auto on OpenWrt with `ubus` | Enable supported client control commands |
 | `OMADA_CAP_CLIENT_RATE_LIMITS` | `false` | Enable nftables client rate-limit enforcement |
 
+## OpenWrt startup bootstrap
+
+The agent runs an idempotent OpenWrt bootstrap before ECSP discovery when
+`OMADA_OPENWRT_BOOTSTRAP=true` and the detected platform is OpenWrt. This is
+where lab-only manual setup belongs.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OMADA_OPENWRT_BOOTSTRAP` | `true` | Enable startup self-healing for OpenWrt prerequisites |
+| `OMADA_OPENWRT_BOOTSTRAP_LAN` | `true` | Ensure the LAN bridge can exist even with only Wi-Fi ports |
+| `OMADA_OPENWRT_LAN_INTERFACE` | `lan` | UCI network interface used by Omada WLANs |
+| `OMADA_OPENWRT_LAN_BRIDGE` | `br-lan` | UCI bridge device used by OpenWrt AP interfaces and openNDS |
+| `OMADA_OPENWRT_LAN_IPADDR` | `192.168.1.1/24` | LAN address used only when the bootstrap must create a missing LAN interface |
+| `OMADA_OPENWRT_BOOTSTRAP_OPENNDS` | `true` | Enable and start openNDS when installed |
+| `OMADA_OPENNDS_GATEWAY_PORT` | `2050` | openNDS local gateway port |
+| `OMADA_OPENNDS_GATEWAY_NAME` | device name | openNDS gateway name; empty uses `OMADA_DEVICE_NAME` |
+| `OMADA_SITE_NAME` | empty | Human-readable Omada site name sent as `site` in External Portal redirects when the Controller does not include `siteName` |
+| `OMADA_OPENWRT_ENABLE_WAN_MANAGEMENT` | `false` | Lab-only opt-in to open SSH, LuCI HTTP, and LuCI HTTPS from the WAN zone |
+| `OMADA_OPENWRT_WAN_ZONE` | `wan` | Firewall zone used by the WAN management opt-in rules |
+
+The LAN bootstrap sets `bridge_empty=1` on the bridge device. This is required
+on Wi-Fi-only OpenWrt devices where `br-lan` otherwise does not exist until a
+radio interface is already attached, which prevents hostapd/openNDS from
+starting cleanly.
+
 ## OpenWrt targets
 
 | Variable | Default | Description |
@@ -158,6 +183,8 @@ With openNDS installed, the agent:
 - writes `/usr/lib/opennds/theme_openomada_redirect.sh` and sets
   `login_option_enabled=3` when Omada provides a portal URL through
   `portalConfigList` or a `/portal/...` free-policy URL;
+- redirects EAP clients with the TP-Link External Portal query contract:
+  `clientMac`, `apMac`, `ssidName`, `t`, `radioId`, `site`, and `redirectUrl`;
 - sets `allow_preemptive_authentication=0` so clients use the classic HTTP
   redirect path instead of stopping at the openNDS RFC8910 status page;
 - applies `clientConfig.unauth=false` with `ndsctl auth`;
@@ -166,9 +193,12 @@ With openNDS installed, the agent:
   installed;
 - does not install its own `inet openomada_portal` table.
 
-The generated ThemeSpec redirects only to the configured portal URL. It does not
-append client MAC, client IP, or original URL parameters until the Omada
-`/portal/entry` parameter contract is mapped safely.
+The generated ThemeSpec derives `clientMac` and `originurl` from openNDS FAS
+variables, uses `OMADA_DEVICE_MAC` for `apMac`, falls back to `iw dev <clientif>
+info` for SSID/radio detection, and uses `OMADA_SITE_NAME` when Omada did not
+send a `siteName` value in `portalConfigList`. It intentionally does not append
+`clientIp` because that field is not part of the documented EAP External Portal
+URL.
 
 ## DHCP/client tracking
 

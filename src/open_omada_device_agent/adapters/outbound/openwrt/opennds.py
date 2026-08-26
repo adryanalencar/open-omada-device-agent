@@ -37,6 +37,10 @@ class OpenNdsPortalPolicy:
     preauthenticated_user_rules: tuple[str, ...] = ()
     walled_garden_ports: tuple[int, ...] = (80, 443, 8088, 8843)
     portal_redirect_url: str | None = None
+    landing_page_url: str | None = None
+    default_ssid_name: str | None = None
+    ap_mac: str | None = None
+    site_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -204,6 +208,8 @@ def opennds_portal_policy_from_omada_config(
     free_policy: PortalFreePolicy | None,
     portal_configs: tuple[PortalConfiguration, ...] = (),
     controller_host: str | None = None,
+    device_mac: str | None = None,
+    site_name: str | None = None,
 ) -> OpenNdsPortalPolicy:
     base = opennds_portal_policy_from_free_policy(free_policy)
     return OpenNdsPortalPolicy(
@@ -215,6 +221,13 @@ def opennds_portal_policy_from_omada_config(
             portal_configs=portal_configs,
             controller_host=config.CONTROLLER_HOST if controller_host is None else controller_host,
         ),
+        landing_page_url=_portal_landing_page_url(portal_configs),
+        default_ssid_name=_portal_default_ssid_name(portal_configs),
+        ap_mac=_portal_ap_mac(config.MAC if device_mac is None else device_mac),
+        site_name=_portal_site_name(
+            portal_configs=portal_configs,
+            configured_site_name=config.SITE_NAME if site_name is None else site_name,
+        ),
     )
 
 
@@ -222,15 +235,155 @@ def build_openomada_redirect_themespec(policy: OpenNdsPortalPolicy) -> str:
     if not policy.portal_redirect_url:
         raise ValueError("openNDS Omada redirect ThemeSpec requires portal_redirect_url")
     portal_url = shlex.quote(policy.portal_redirect_url)
+    landing_page_url = shlex.quote(policy.landing_page_url or "")
+    default_ssid_name = shlex.quote(policy.default_ssid_name or "")
+    ap_mac = shlex.quote(policy.ap_mac or "")
+    site_name = shlex.quote(policy.site_name or "")
     safe_link = html.escape(policy.portal_redirect_url, quote=True)
     return "\n".join(
         (
             "#!/bin/sh",
             'title="openomada-controller-redirect"',
             f"openomada_portal_url={portal_url}",
+            f"openomada_landing_page_url={landing_page_url}",
+            f"openomada_default_ssid_name={default_ssid_name}",
+            f"openomada_ap_mac={ap_mac}",
+            f"openomada_site_name={site_name}",
+            "",
+            "_openomada_urlencode() {",
+            "    value=$1",
+            "    encoded=\"\"",
+            "    LC_ALL=C",
+            "    while [ -n \"$value\" ]; do",
+            "        char=${value%\"${value#?}\"}",
+            "        value=${value#?}",
+            "        case \"$char\" in",
+            "            [a-zA-Z0-9.~_-]) encoded=\"${encoded}${char}\" ;;",
+            "            *)",
+            "                hex=$(printf \"%s\" \"$char\" | od -An -tx1 | tr -d \" \\n\")",
+            "                while [ -n \"$hex\" ]; do",
+            "                    byte=${hex%\"${hex#??}\"}",
+            "                    hex=${hex#??}",
+            "                    encoded=\"${encoded}%${byte}\"",
+            "                done",
+            "                ;;",
+            "        esac",
+            "    done",
+            "    printf \"%s\" \"$encoded\"",
+            "}",
+            "",
+            "_openomada_urldecode() {",
+            "    value=$(printf \"%s\" \"$1\" | sed 's/+/ /g; s/%/\\\\x/g')",
+            "    printf \"%b\" \"$value\"",
+            "}",
+            "",
+            "_openomada_append_param() {",
+            "    key=$1",
+            "    value=$2",
+            "    case \"$openomada_target\" in",
+            "        *\\?|*\\&) sep=\"\" ;;",
+            "        *\\?*) sep=\"&\" ;;",
+            "        *) sep=\"?\" ;;",
+            "    esac",
+            "    openomada_target=\"${openomada_target}${sep}${key}=$(_openomada_urlencode \"$value\")\"",
+            "}",
+            "",
+            "_openomada_iface_address() {",
+            "    iface=$1",
+            "    [ -n \"$iface\" ] || return",
+            "    [ -r \"/sys/class/net/$iface/address\" ] || return",
+            "    read -r mac < \"/sys/class/net/$iface/address\" || return",
+            "    printf \"%s\" \"$mac\" | tr 'A-F' 'a-f'",
+            "}",
+            "",
+            "_openomada_ssid_from_iw() {",
+            "    iface=$1",
+            "    [ -n \"$iface\" ] || return",
+            "    command -v iw >/dev/null 2>&1 || return",
+            "    iw dev \"$iface\" info 2>/dev/null | awk '",
+            "        /^[ \\t]*ssid[ \\t]+/ {",
+            "            sub(/^[ \\t]*ssid[ \\t]+/, \"\")",
+            "            print",
+            "            exit",
+            "        }",
+            "    '",
+            "}",
+            "",
+            "_openomada_radio_id_from_iw() {",
+            "    iface=$1",
+            "    [ -n \"$iface\" ] || return",
+            "    command -v iw >/dev/null 2>&1 || return",
+            "    freq=$(iw dev \"$iface\" info 2>/dev/null | awk '",
+            "        /^[ \\t]*channel[ \\t]+/ {",
+            "            for (i = 1; i <= NF; i++) {",
+            "                if ($i ~ /^\\([0-9]+$/) {",
+            "                    gsub(/[()]/, \"\", $i)",
+            "                    print $i",
+            "                    exit",
+            "                }",
+            "            }",
+            "        }",
+            "    ')",
+            "    case \"$freq\" in",
+            "        ''|*[!0-9]*) ;;",
+            "        *)",
+            "            if [ \"$freq\" -lt 3000 ]; then",
+            "                printf \"0\"",
+            "            elif [ \"$freq\" -ge 5925 ]; then",
+            "                printf \"3\"",
+            "            else",
+            "                printf \"1\"",
+            "            fi",
+            "            return",
+            "            ;;",
+            "    esac",
+            "    channel=$(iw dev \"$iface\" info 2>/dev/null | awk '/^[ \\t]*channel[ \\t]+/ { print $2; exit }')",
+            "    case \"$channel\" in",
+            "        ''|*[!0-9]*) return ;;",
+            "    esac",
+            "    if [ \"$channel\" -le 14 ]; then",
+            "        printf \"0\"",
+            "    else",
+            "        printf \"1\"",
+            "    fi",
+            "}",
+            "",
+            "_openomada_now_us() {",
+            "    seconds=$(date +%s 2>/dev/null || printf \"0\")",
+            "    printf \"%s000000\" \"$seconds\"",
+            "}",
             "",
             "generate_splash_sequence() {",
-            '    safe_target=$(printf "%s" "$openomada_portal_url" | sed "s/&/\\\\&amp;/g; s/\\"/\\\\&quot;/g; s/</\\\\&lt;/g; s/>/\\\\&gt;/g")',
+            "    openomada_target=$openomada_portal_url",
+            "    openomada_client_mac=${clientmac:-}",
+            "    openomada_client_if=${clientif:-}",
+            "    openomada_resolved_ap_mac=${openomada_ap_mac:-}",
+            "    if [ -z \"$openomada_resolved_ap_mac\" ]; then",
+            "        openomada_resolved_ap_mac=$(_openomada_iface_address \"$openomada_client_if\")",
+            "    fi",
+            "    openomada_resolved_ssid=${openomada_default_ssid_name:-}",
+            "    if [ -z \"$openomada_resolved_ssid\" ]; then",
+            "        openomada_resolved_ssid=$(_openomada_ssid_from_iw \"$openomada_client_if\")",
+            "    fi",
+            "    if [ -z \"$openomada_resolved_ssid\" ]; then",
+            "        openomada_resolved_ssid=${client_zone:-}",
+            "    fi",
+            "    openomada_radio_id=$(_openomada_radio_id_from_iw \"$openomada_client_if\")",
+            "    if [ -z \"$openomada_radio_id\" ]; then",
+            "        openomada_radio_id=\"0\"",
+            "    fi",
+            "    openomada_redirect_url=$openomada_landing_page_url",
+            "    if [ -z \"$openomada_redirect_url\" ] && [ -n \"${originurl:-}\" ]; then",
+            "        openomada_redirect_url=$(_openomada_urldecode \"$originurl\")",
+            "    fi",
+            "    _openomada_append_param \"clientMac\" \"$openomada_client_mac\"",
+            "    _openomada_append_param \"apMac\" \"$openomada_resolved_ap_mac\"",
+            "    _openomada_append_param \"ssidName\" \"$openomada_resolved_ssid\"",
+            "    _openomada_append_param \"t\" \"$(_openomada_now_us)\"",
+            "    _openomada_append_param \"radioId\" \"$openomada_radio_id\"",
+            "    _openomada_append_param \"site\" \"$openomada_site_name\"",
+            "    _openomada_append_param \"redirectUrl\" \"$openomada_redirect_url\"",
+            "    safe_target=$(printf \"%s\" \"$openomada_target\" | sed 's/&/\\&amp;/g; s/\"/\\&quot;/g; s/</\\&lt;/g; s/>/\\&gt;/g')",
             '    echo "<meta http-equiv=\\"refresh\\" content=\\"0; url=$safe_target\\">"',
             '    echo "<p><a href=\\"$safe_target\\">Open Omada portal</a></p>"',
             "}",
@@ -244,7 +397,7 @@ def build_openomada_redirect_themespec(policy: OpenNdsPortalPolicy) -> str:
             "    exit 0",
             "}",
             "",
-            f"# Static fallback link: {safe_link}",
+            f"# Static portal base URL: {safe_link}",
             "",
         )
     )
@@ -277,7 +430,6 @@ def _portal_redirect_url(
         for raw_url in (
             portal_config.external_portal_server,
             portal_config.ext_auth_server,
-            portal_config.redirect_url if portal_config.redirect is not False else None,
         ):
             normalized = _normal_portal_url(raw_url)
             if normalized is not None:
@@ -290,6 +442,12 @@ def _portal_redirect_url(
             )
             if normalized is not None:
                 return normalized
+    for portal_config in portal_configs:
+        normalized = _normal_portal_url(
+            portal_config.redirect_url if portal_config.redirect is not False else None
+        )
+        if normalized is not None:
+            return normalized
     host = (controller_host or "").strip()
     if not host:
         return None
@@ -300,6 +458,45 @@ def _portal_redirect_url(
     scheme = parsed.scheme or "http"
     port = parsed.port or (8843 if scheme == "https" else 8088)
     return f"{scheme}://{hostname}:{port}/portal/entry"
+
+
+def _portal_landing_page_url(portal_configs: tuple[PortalConfiguration, ...]) -> str | None:
+    for portal_config in portal_configs:
+        if portal_config.redirect is False:
+            continue
+        normalized = _normal_portal_url(portal_config.redirect_url)
+        if normalized is not None:
+            return normalized
+    return None
+
+
+def _portal_default_ssid_name(portal_configs: tuple[PortalConfiguration, ...]) -> str | None:
+    for portal_config in portal_configs:
+        for ssid in portal_config.ssid_list:
+            normalized = str(ssid).strip()
+            if normalized:
+                return normalized
+    return None
+
+
+def _portal_ap_mac(value: object) -> str | None:
+    try:
+        return MacAddress(str(value)).value
+    except ValueError:
+        return None
+
+
+def _portal_site_name(
+    *,
+    portal_configs: tuple[PortalConfiguration, ...],
+    configured_site_name: str,
+) -> str | None:
+    for portal_config in portal_configs:
+        normalized = (portal_config.site_name or "").strip()
+        if normalized:
+            return normalized
+    normalized = configured_site_name.strip()
+    return normalized or None
 
 
 def _normal_portal_url(

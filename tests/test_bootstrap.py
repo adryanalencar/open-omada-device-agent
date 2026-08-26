@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pytest
+
 from open_omada_device_agent.bootstrap import AgentSettings, build_runtime
 from open_omada_device_agent.contexts.lifecycle.domain import ManagedState
 
@@ -71,3 +73,25 @@ def test_capabilities_use_bootstrap_snapshot_not_later_environment(monkeypatch):
     runtime = build_runtime(settings)
 
     assert runtime.capabilities.platform == "generic"
+
+
+def test_settings_reject_invalid_opennds_gateway_port():
+    settings = replace(
+        AgentSettings.from_environment(),
+        controller_host="controller.example.test",
+        opennds_gateway_port=70000,
+    )
+
+    with pytest.raises(RuntimeError, match="OMADA_OPENNDS_GATEWAY_PORT"):
+        settings.validate()
+
+
+def test_settings_reject_missing_openwrt_lan_target():
+    settings = replace(
+        AgentSettings.from_environment(),
+        controller_host="controller.example.test",
+        openwrt_lan_bridge="",
+    )
+
+    with pytest.raises(RuntimeError, match="OMADA_OPENWRT_LAN_INTERFACE"):
+        settings.validate()
