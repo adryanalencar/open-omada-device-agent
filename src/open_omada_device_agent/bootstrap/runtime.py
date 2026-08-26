@@ -1,9 +1,11 @@
 """The sole default wiring point for application ports and concrete adapters."""
 from dataclasses import dataclass
 from functools import lru_cache, partial
+import logging
 
 from ..application.configuration import ApplyDeviceConfiguration
 from ..application.contracts import PlatformCapabilities
+from ..adapters.outbound.openwrt.bootstrap import OpenWrtBootstrapConfig, OpenWrtStartupBootstrap
 from ..adapters.outbound.openwrt.device_commands import OpenWrtClientControlAdapter, SysfsLedAdapter
 from ..adapters.outbound.openwrt.uci import OpenWrtUciAdapter
 from ..adapters.outbound.openwrt.capabilities import detect_platform_capabilities
@@ -16,6 +18,9 @@ from ..projections.inform import InformAssembler, LanObservation
 from ..contexts.lifecycle.infrastructure.session_state import JsonSessionStateRepository
 from ..adapters.outbound.openwrt.telemetry import collect_openwrt_wireless_clients, collect_openwrt_wireless_inform
 from ..adapters.outbound.openwrt.opennds import collect_opennds_clients
+
+
+log = logging.getLogger("open_omada.bootstrap")
 
 
 @dataclass(frozen=True)
@@ -32,6 +37,25 @@ class AgentRuntime:
 def build_runtime(settings: AgentSettings) -> AgentRuntime:
     """Build production dependencies; tests may construct the use cases directly."""
     capabilities = detect_platform_capabilities(env=dict(settings.capability_environment))
+    bootstrap_result = OpenWrtStartupBootstrap(
+        config=OpenWrtBootstrapConfig(
+            enabled=settings.openwrt_bootstrap,
+            ensure_lan=settings.openwrt_bootstrap_lan,
+            lan_interface=settings.openwrt_lan_interface,
+            lan_bridge=settings.openwrt_lan_bridge,
+            lan_ipaddr=settings.openwrt_lan_ipaddr,
+            ensure_opennds=settings.openwrt_bootstrap_opennds,
+            opennds_gateway_port=settings.opennds_gateway_port,
+            opennds_gateway_name=settings.opennds_gateway_name,
+            enable_wan_management=settings.openwrt_enable_wan_management,
+            wan_zone=settings.openwrt_wan_zone,
+        )
+    ).apply(capabilities)
+    if bootstrap_result.warnings:
+        log.warning(
+            "OpenWrt bootstrap completed with warning(s): %s",
+            "; ".join(bootstrap_result.warnings),
+        )
     profile = GenericOpenWrtAccessPointProfile(
         settings,
         ip_address=partial(

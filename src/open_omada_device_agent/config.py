@@ -94,6 +94,20 @@ PORTAL_REDIRECT_PORT = _int("OMADA_PORTAL_REDIRECT_PORT", 8080)
 MANAGEMENT_VLAN_INTERFACE = os.getenv("OMADA_MANAGEMENT_VLAN_INTERFACE", "").strip()
 MANAGEMENT_VLAN_DEVICE = os.getenv("OMADA_MANAGEMENT_VLAN_DEVICE", "").strip()
 
+# OpenWrt bootstrap. These settings are applied idempotently before ECSP
+# discovery so a Wi-Fi-only OpenWrt device can create br-lan, bind openNDS, and
+# optionally expose lab management on the WAN uplink.
+OPENWRT_BOOTSTRAP = _bool("OMADA_OPENWRT_BOOTSTRAP", True)
+OPENWRT_BOOTSTRAP_LAN = _bool("OMADA_OPENWRT_BOOTSTRAP_LAN", True)
+OPENWRT_LAN_INTERFACE = os.getenv("OMADA_OPENWRT_LAN_INTERFACE", "lan").strip()
+OPENWRT_LAN_BRIDGE = os.getenv("OMADA_OPENWRT_LAN_BRIDGE", "br-lan").strip()
+OPENWRT_LAN_IPADDR = os.getenv("OMADA_OPENWRT_LAN_IPADDR", "192.168.1.1/24").strip()
+OPENWRT_BOOTSTRAP_OPENNDS = _bool("OMADA_OPENWRT_BOOTSTRAP_OPENNDS", True)
+OPENNDS_GATEWAY_PORT = _int("OMADA_OPENNDS_GATEWAY_PORT", 2050)
+OPENNDS_GATEWAY_NAME = os.getenv("OMADA_OPENNDS_GATEWAY_NAME", "").strip()
+OPENWRT_ENABLE_WAN_MANAGEMENT = _bool("OMADA_OPENWRT_ENABLE_WAN_MANAGEMENT", False)
+OPENWRT_WAN_ZONE = os.getenv("OMADA_OPENWRT_WAN_ZONE", "wan").strip()
+
 # Lab/research compatibility. When enabled, known controller-side/default
 # configuration families that currently have no local OpenWrt side effect are
 # acknowledged instead of failing the entire SET_REQUEST batch. Keep disabled

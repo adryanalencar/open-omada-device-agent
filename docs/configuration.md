@@ -105,6 +105,30 @@ OMADA_TLS_CA_FILE=/etc/open-omada/controller-ca.pem
 | `OMADA_CAP_CLIENT_OPERATIONS` | auto on OpenWrt with `ubus` | Enable supported client control commands |
 | `OMADA_CAP_CLIENT_RATE_LIMITS` | `false` | Enable nftables client rate-limit enforcement |
 
+## OpenWrt startup bootstrap
+
+The agent runs an idempotent OpenWrt bootstrap before ECSP discovery when
+`OMADA_OPENWRT_BOOTSTRAP=true` and the detected platform is OpenWrt. This is
+where lab-only manual setup belongs.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OMADA_OPENWRT_BOOTSTRAP` | `true` | Enable startup self-healing for OpenWrt prerequisites |
+| `OMADA_OPENWRT_BOOTSTRAP_LAN` | `true` | Ensure the LAN bridge can exist even with only Wi-Fi ports |
+| `OMADA_OPENWRT_LAN_INTERFACE` | `lan` | UCI network interface used by Omada WLANs |
+| `OMADA_OPENWRT_LAN_BRIDGE` | `br-lan` | UCI bridge device used by OpenWrt AP interfaces and openNDS |
+| `OMADA_OPENWRT_LAN_IPADDR` | `192.168.1.1/24` | LAN address used only when the bootstrap must create a missing LAN interface |
+| `OMADA_OPENWRT_BOOTSTRAP_OPENNDS` | `true` | Enable and start openNDS when installed |
+| `OMADA_OPENNDS_GATEWAY_PORT` | `2050` | openNDS local gateway port |
+| `OMADA_OPENNDS_GATEWAY_NAME` | device name | openNDS gateway name; empty uses `OMADA_DEVICE_NAME` |
+| `OMADA_OPENWRT_ENABLE_WAN_MANAGEMENT` | `false` | Lab-only opt-in to open SSH, LuCI HTTP, and LuCI HTTPS from the WAN zone |
+| `OMADA_OPENWRT_WAN_ZONE` | `wan` | Firewall zone used by the WAN management opt-in rules |
+
+The LAN bootstrap sets `bridge_empty=1` on the bridge device. This is required
+on Wi-Fi-only OpenWrt devices where `br-lan` otherwise does not exist until a
+radio interface is already attached, which prevents hostapd/openNDS from
+starting cleanly.
+
 ## OpenWrt targets
 
 | Variable | Default | Description |

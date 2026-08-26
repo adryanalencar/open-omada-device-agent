@@ -219,6 +219,13 @@ The agent auto-detects portal capability when `opennds` and `ndsctl` are
 available. If `OMADA_CAP_PORTAL=false` is set in `.env`, that explicit override
 disables portal acceptance.
 
+At startup on OpenWrt, the agent also applies an idempotent platform bootstrap:
+it sets `bridge_empty=1` on the configured LAN bridge so Wi-Fi-only devices can
+create `br-lan`, reloads network/Wi-Fi when that prerequisite changed, enables
+openNDS on the LAN bridge when installed, and disables openNDS preemptive
+authentication so clients follow the Omada ThemeSpec redirect. Lab WAN access
+for SSH/LuCI is available only through `OMADA_OPENWRT_ENABLE_WAN_MANAGEMENT=true`.
+
 Validated behavior today:
 
 - openNDS captures unauthenticated WLAN clients on OpenWrt.
