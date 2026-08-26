@@ -119,10 +119,11 @@ ECSP_VERSION = os.getenv("OMADA_ECSP_VERSION", "2.3.0")
 ECSP_VER_CAP = _int("OMADA_ECSP_VER_CAP", 2)
 
 # Controller/site routing. A site-scoped discovery destination is a 24-character
-# Site ID; the logical controller identity remains separate.
+# Site ID; the Omada external portal query needs the human-readable site name.
 CONTROLLER_ID = os.getenv("OMADA_CONTROLLER_ID", "").strip()
 DEST_OMADAC_ID = os.getenv("OMADA_DEST_OMADAC_ID", "").strip()
 SITE_ID = os.getenv("OMADA_SITE_ID", "").strip()
+SITE_NAME = os.getenv("OMADA_SITE_NAME", "").strip()
 
 # Legacy V2 Device Account authentication. No password default is provided and
 # credentials are never persisted to managed state.

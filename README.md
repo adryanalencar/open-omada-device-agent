@@ -42,7 +42,7 @@ Omada Network Application `6.2.14.11` and an EAP110 v4-compatible AP profile.
 | Client operations and rate limits | 🟡 Optional `ubus`/nftables adapters |
 | LED enable/disable/locate | 🟡 Optional sysfs adapter |
 | FORGET / forget-no-reset response | ✅ Working |
-| Captive portal sessions/enforcement | 🟡 openNDS enforcement, free-policy walled garden, ThemeSpec redirect to the Omada portal URL, and client auth state are wired |
+| Captive portal sessions/enforcement | 🟡 openNDS enforcement, free-policy walled garden, TP-Link External Portal redirect parameters, and client auth state are wired |
 | Portal RADIUS authentication | 🟡 Library support; not wired to HTTP portal flow |
 | `GET_REQUEST` | 🟡 Defensive unsupported-key responses |
 | Notify families | 🟡 Defensive unsupported replies |
@@ -234,7 +234,10 @@ Validated behavior today:
 - When Omada sends a portal URL through `portalConfigList` or a `/portal/...`
   URL in `portalFreePolicyConfig`, the agent writes an openNDS ThemeSpec that
   redirects the captive browser to that Omada-configured URL instead of the
-  stock openNDS splash.
+  stock openNDS splash. For EAP-style External Portal flows, the redirect
+  appends `clientMac`, `apMac`, `ssidName`, `t`, `radioId`, `site`, and
+  `redirectUrl`, matching the TP-Link External Portal contract required for the
+  portal server to authorize the client through the Controller.
 - The openNDS adapter disables `allow_preemptive_authentication` and relies on
   the classic HTTP redirect path; this avoids Android CPD/RFC8910 opening a
   generic status page instead of the Omada-configured portal URL.
@@ -247,9 +250,9 @@ Validated behavior today:
 
 Current limitation:
 
-- The ThemeSpec redirect intentionally does not append client MAC, client IP, or
-  original URL parameters. Full Omada-native `/portal/entry` parity may require
-  a signed FAS/authorization bridge once those parameters are mapped safely.
+- The agent does not host the external portal UI and does not submit
+  `/hotspot/extPortal/auth` itself. The external portal configured in Omada must
+  preserve the redirect query parameters and perform Controller authorization.
 
 ## Documentation
 

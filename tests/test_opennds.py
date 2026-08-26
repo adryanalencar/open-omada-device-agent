@@ -1,4 +1,5 @@
 import json
+import subprocess
 from dataclasses import dataclass
 
 from open_omada_device_agent.adapters.outbound.openwrt.opennds import (
@@ -114,13 +115,20 @@ def test_builds_opennds_policy_with_controller_portal_redirect():
             PortalConfiguration(
                 external_portal_server="https://portal.example.com/login",
                 redirect_url="https://example.com/after-login",
+                site_name="HQ",
+                ssid_list=("lab-wlan",),
             ),
         ),
         controller_host="192.0.2.1",
+        device_mac="02-11-22-33-44-55",
     )
 
     assert policy.walled_garden_fqdns == ("mediabeach.com.br",)
     assert policy.portal_redirect_url == "https://portal.example.com/login"
+    assert policy.landing_page_url == "https://example.com/after-login"
+    assert policy.default_ssid_name == "lab-wlan"
+    assert policy.ap_mac == "02:11:22:33:44:55"
+    assert policy.site_name == "HQ"
 
 
 def test_builds_opennds_policy_with_portal_url_from_free_policy():
@@ -133,9 +141,11 @@ def test_builds_opennds_policy_with_portal_url_from_free_policy():
         ),
         portal_configs=(),
         controller_host="192.0.2.1",
+        site_name="Pereque Mirim",
     )
 
     assert policy.portal_redirect_url == "https://mediabeach.com.br/portal/c00e9a43"
+    assert policy.site_name == "Pereque Mirim"
 
 
 def test_builds_opennds_policy_with_controller_entry_fallback():
@@ -148,24 +158,78 @@ def test_builds_opennds_policy_with_controller_entry_fallback():
     assert policy.portal_redirect_url == "http://omada.example.net:8088/portal/entry"
 
 
-def test_builds_openomada_redirect_themespec_without_client_identifiers():
-    script = build_openomada_redirect_themespec(
-        opennds_portal_policy_from_omada_config(
-            free_policy=PortalFreePolicy(
-                url_rules=({"url": "mediabeach.com.br/portal/c00e9a43?x=1&y=2"},)
+def test_builds_openomada_redirect_themespec_with_omada_eap_parameters():
+    policy = opennds_portal_policy_from_omada_config(
+        free_policy=PortalFreePolicy(
+            url_rules=({"url": "mediabeach.com.br/portal/c00e9a43?x=1&y=2"},)
+        ),
+        portal_configs=(
+            PortalConfiguration(
+                redirect_url="https://example.com/after-login",
+                site_name="Pereque Mirim",
+                ssid_list=("Ubatuba - Wifi Grátis",),
             ),
-            controller_host="",
-        )
+        ),
+        controller_host="",
+        device_mac="02:11:22:33:44:55",
     )
+    script = build_openomada_redirect_themespec(policy)
 
     assert (
         "openomada_portal_url='https://mediabeach.com.br/portal/c00e9a43?x=1&y=2'"
         in script
     )
-    assert "clientMac" not in script
+    assert "clientMac" in script
+    assert "apMac" in script
+    assert "ssidName" in script
+    assert "radioId" in script
+    assert "site" in script
+    assert "redirectUrl" in script
     assert "clientIp" not in script
-    assert "originurl" not in script
+    assert "originurl" in script
     assert "meta http-equiv" in script
+
+
+def test_openomada_redirect_themespec_emits_tp_link_external_portal_url():
+    policy = opennds_portal_policy_from_omada_config(
+        free_policy=PortalFreePolicy(
+            url_rules=({"url": "mediabeach.com.br/portal/c00e9a43?x=1&y=2"},)
+        ),
+        portal_configs=(
+            PortalConfiguration(
+                redirect_url="https://example.com/after-login",
+                site_name="Pereque Mirim",
+                ssid_list=("Ubatuba - Wifi Grátis",),
+            ),
+        ),
+        controller_host="",
+        device_mac="02:11:22:33:44:55",
+    )
+    script = "\n".join(
+        (
+            build_openomada_redirect_themespec(policy),
+            "clientmac='aa:bb:cc:dd:ee:ff'",
+            "clientif=''",
+            "originurl='http%3A%2F%2Forigin.example%2Fpath'",
+            "generate_splash_sequence",
+        )
+    )
+
+    result = subprocess.run(
+        ["/bin/sh"],
+        input=script,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+
+    assert "https://mediabeach.com.br/portal/c00e9a43?x=1&amp;y=2" in result.stdout
+    assert "clientMac=aa%3abb%3acc%3add%3aee%3aff" in result.stdout
+    assert "apMac=02%3a11%3a22%3a33%3a44%3a55" in result.stdout
+    assert "ssidName=Ubatuba%20-%20Wifi%20Gr%c3%a1tis" in result.stdout
+    assert "radioId=0" in result.stdout
+    assert "site=Pereque%20Mirim" in result.stdout
+    assert "redirectUrl=https%3a%2f%2fexample.com%2fafter-login" in result.stdout
 
 
 def test_opennds_portal_adapter_applies_walled_garden_to_uci():

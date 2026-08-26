@@ -74,8 +74,11 @@ flowchart LR
 
 `OpenWrtPortalRuntime` prefers openNDS when it is installed, translates Omada
 free-policy rules into openNDS policy, and writes a small ThemeSpec redirect
-when the Controller supplies a portal URL. The older nftables-only fallback is
-skipped to avoid overlapping captive enforcement engines.
+when the Controller supplies a portal URL. That ThemeSpec maps openNDS FAS
+variables into the TP-Link EAP External Portal query parameters that the
+external portal server must preserve before authorizing the client through the
+Controller. The older nftables-only fallback is skipped to avoid overlapping
+captive enforcement engines.
 
 `adapters.inbound.ecsp` is an anti-corruption layer. Raw mappings are accepted
 only at framing and mapper boundaries. The mapper emits typed radio, WLAN,

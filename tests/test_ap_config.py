@@ -69,6 +69,7 @@ def test_parse_radio_wlan_vlan_and_portal_config_from_set_body():
                     "redirectUrl": "https://example.com/landing",
                     "authServerType": 2,
                     "externalPortalServer": "https://portal.example.com/login",
+                    "siteName": "HQ",
                     "portalTitle": "Guest Portal",
                     "portalAccept": True,
                     "ssidList": ["lab-wlan"],
@@ -119,6 +120,7 @@ def test_parse_radio_wlan_vlan_and_portal_config_from_set_body():
     assert update.portal_configs[0].auth_type == 4
     assert update.portal_configs[0].external_portal_server == "https://portal.example.com/login"
     assert update.portal_configs[0].redirect_url == "https://example.com/landing"
+    assert update.portal_configs[0].site_name == "HQ"
     assert update.portal_configs[0].ssid_list == ("lab-wlan",)
     assert update.portal_configs[0].raw["password"] == "***"
     assert update.portal_configs[0].raw["radiusPassword"] == "***"
