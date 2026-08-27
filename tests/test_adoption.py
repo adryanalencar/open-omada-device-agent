@@ -1,10 +1,12 @@
 import time
+from types import SimpleNamespace
 
 from open_omada_device_agent import config
 from open_omada_device_agent.adapters.outbound.openwrt.device_profile import (
     GenericOpenWrtAccessPointProfile,
 )
 from open_omada_device_agent.application.contracts import PlatformCapabilities
+from open_omada_device_agent.application.configuration import ApplyConfigurationResult
 from open_omada_device_agent.bootstrap import AgentSettings, build_runtime
 from open_omada_device_agent.adoption import (
     CONFIG_ERROR,
@@ -12,6 +14,7 @@ from open_omada_device_agent.adoption import (
     _describe_config_update,
     _device_negotiation_body,
     _get_response_body,
+    _handle_portal_auth_request,
     _handle_managed_get_request,
     _project_inform_body,
     _notify_reply_body,
@@ -34,6 +37,23 @@ class RecordingSocket:
 
     def sendall(self, data):
         self.sent += data
+
+
+class RecordingConfiguration:
+    def __init__(self, result=None):
+        self.result = result or ApplyConfigurationResult(applied=True, changed=True)
+        self.updates = []
+
+    def execute(self, update):
+        self.updates.append(update)
+        return self.result
+
+
+def _recording_services(configuration):
+    return SimpleNamespace(
+        configuration=configuration,
+        settings=AgentSettings.from_environment(),
+    )
 
 
 def test_device_negotiation_has_required_non_null_v2_fields():
@@ -355,6 +375,85 @@ def test_send_notify_reply_honors_no_reply_flag():
 
     assert replied is False
     assert sock.sent == b""
+
+
+def test_portal_auth_request_applies_hyphenated_omada_mac_and_replies():
+    sock = RecordingSocket()
+    configuration = RecordingConfiguration()
+
+    sequence_id, errcode = _handle_portal_auth_request(
+        sock,
+        {
+            "header": {"type": int(MessageType.EVENT_PORTAL_AUTH), "seq": 501},
+            "body": {
+                "authedUsers": [
+                    {
+                        "mac": "9E-27-26-62-6D-EC",
+                        "rst": 1,
+                        "ssid": "Ubatuba - Wifi Grátis",
+                        "rid": 1,
+                        "start": 1787784794,
+                        "end": 1787788394,
+                    }
+                ]
+            },
+        },
+        controller_id="controller-id",
+        dump_json=False,
+        services=_recording_services(configuration),
+    )
+
+    assert (sequence_id, errcode) == (501, 0)
+    assert len(configuration.updates) == 1
+    client_config = configuration.updates[0].client_configs[0]
+    assert client_config.client_mac == "9E-27-26-62-6D-EC"
+    assert client_config.unauthenticated is False
+    assert client_config.raw["ssid"] == "Ubatuba - Wifi Grátis"
+    message = decode_frame(sock.sent)
+    assert message["header"]["type"] == int(MessageType.EVENT_PORTAL_AUTH_RESPONSE)
+    assert message["header"]["seq"] == 501
+    assert message["header"]["dest"] == "controller-id"
+    assert message["body"] == {"err": 0}
+
+
+def test_portal_auth_request_without_sequence_applies_without_response():
+    sock = RecordingSocket()
+    configuration = RecordingConfiguration()
+
+    sequence_id, errcode = _handle_portal_auth_request(
+        sock,
+        {
+            "header": {"type": int(MessageType.EVENT_PORTAL_AUTH)},
+            "body": {"authedUsers": [{"mac": "9E-27-26-62-6D-EC", "rst": 0}]},
+        },
+        controller_id="controller-id",
+        dump_json=False,
+        services=_recording_services(configuration),
+    )
+
+    assert (sequence_id, errcode) == (None, 0)
+    assert configuration.updates[0].client_configs[0].unauthenticated is True
+    assert sock.sent == b""
+
+
+def test_portal_auth_request_skips_ppsk_results_not_supported_by_opennds():
+    sock = RecordingSocket()
+    configuration = RecordingConfiguration()
+
+    sequence_id, errcode = _handle_portal_auth_request(
+        sock,
+        {
+            "header": {"type": int(MessageType.EVENT_PORTAL_AUTH), "seq": 502},
+            "body": {"authedUsers": [{"mac": "9E-27-26-62-6D-EC", "rst": 2}]},
+        },
+        controller_id="controller-id",
+        dump_json=False,
+        services=_recording_services(configuration),
+    )
+
+    assert (sequence_id, errcode) == (502, 0)
+    assert configuration.updates[0].client_configs == ()
+    assert decode_frame(sock.sent)["body"] == {"err": 0}
 
 
 def test_set_response_rejects_increment_when_current_version_is_unknown():
