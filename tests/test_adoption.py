@@ -131,7 +131,9 @@ def test_post_adoption_inform_is_not_factory_and_requests_reply_when_asked():
     assert body["deviceInfo"]["model"]
 
 
-def test_inform_includes_real_dhcp_lease_clients_when_available(tmp_path, monkeypatch):
+def test_inform_enriches_active_hostapd_clients_with_dhcp_leases(tmp_path, monkeypatch):
+    from open_omada_device_agent.contexts.clients.domain import WirelessClientState
+
     leases = tmp_path / "dhcp.leases"
     leases.write_text(
         "1000 aa:bb:cc:dd:ee:ff 192.0.2.10 phone *\n",
@@ -140,6 +142,10 @@ def test_inform_includes_real_dhcp_lease_clients_when_available(tmp_path, monkey
     monkeypatch.setattr(config, "DHCP_LEASE_FILE", str(leases))
     monkeypatch.setattr(
         "open_omada_device_agent.bootstrap.runtime.collect_openwrt_wireless_clients",
+        lambda **_kwargs: (WirelessClientState(mac="aa:bb:cc:dd:ee:ff", ssid="guest"),),
+    )
+    monkeypatch.setattr(
+        "open_omada_device_agent.bootstrap.runtime.collect_opennds_clients",
         lambda **_kwargs: (),
     )
 
@@ -147,7 +153,7 @@ def test_inform_includes_real_dhcp_lease_clients_when_available(tmp_path, monkey
     build_runtime.cache_clear()
     body = _project_inform_body(services=build_runtime(AgentSettings.from_environment()), need_reply=False, started_at=time.monotonic())
 
-    assert body["clients"][0]["mac"] == "aa:bb:cc:dd:ee:ff"
+    assert body["clients"][0]["mac"] == "AA-BB-CC-DD-EE-FF"
     assert body["clients"][0]["ip"] == "192.0.2.10"
     assert body["clients"][0]["name"] == "phone"
 

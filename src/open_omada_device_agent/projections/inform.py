@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
-from ..contexts.clients.domain import WirelessClientState
+from ..contexts.clients.domain import ClientPortalState, WirelessClientState
 
 @dataclass(frozen=True)
 class LanObservation:
@@ -29,7 +29,7 @@ class InformAssembler:
     def build(self, *, need_reply: bool, uptime: int) -> dict[str, Any]:
         info = dict(self._device_info())
         info["isFactory"] = False
-        info["upTime"] = str(max(0, uptime))
+        info["upTime"] = _uptime_value(info.get("upTime"), fallback=uptime)
         body: dict[str, Any] = {
             "needReply": 1 if need_reply else 0,
             "deviceInfo": info,
@@ -41,6 +41,23 @@ class InformAssembler:
         }
         clients = self._clients()
         if clients:
-            body["clients"] = self._client_projection(clients)
+            projected_clients = self._client_projection(clients)
+            body["clients"] = projected_clients
+            portal_clients = [
+                projected
+                for client, projected in zip(clients, projected_clients, strict=False)
+                if client.portal_state is not ClientPortalState.UNKNOWN
+            ]
+            if portal_clients:
+                body["portalAuthClients"] = portal_clients
         body.update(self._wireless_projection())
         return body
+
+
+def _uptime_value(value: Any, *, fallback: int) -> str:
+    if value not in (None, ""):
+        try:
+            return str(max(0, int(float(value))))
+        except (TypeError, ValueError):
+            return str(value)
+    return str(max(0, fallback))

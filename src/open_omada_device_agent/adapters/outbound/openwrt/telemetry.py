@@ -9,6 +9,7 @@ from typing import Any
 from ....contexts.clients.domain import ClientRadioBand, WirelessClientState
 from ....contexts.wireless.domain import RadioBand
 from ....shared.domain import MacAddress
+from ....util.mac_format import to_omada
 from .uci import CommandRunner, SubprocessRunner
 from ....application.contracts import PlatformCapabilities
 from .capabilities import detect_platform_capabilities
@@ -222,6 +223,7 @@ def _augment_with_hostapd_ssid_stats(
             continue
         suffix = INFORM_SUFFIX_BY_BAND[interface.band]
         _upsert_ssid_stats(payload, suffix, stats)
+        _merge_radio_traffic(payload, suffix, stats)
         _merge_radio_station_count(payload, suffix, int(stats["clntNum"]))
     return payload
 
@@ -295,6 +297,24 @@ def _merge_radio_station_count(
     info["staNum"] = max(current, station_count)
 
 
+def _merge_radio_traffic(
+    payload: dict[str, object],
+    suffix: str,
+    ssid_stats: Mapping[str, object],
+) -> None:
+    key = f"radioTraffic_{suffix}"
+    raw = payload.get(key)
+    traffic = raw if isinstance(raw, dict) else {}
+    if raw is not traffic:
+        payload[key] = traffic
+    _add_counter(traffic, "tx", ssid_stats.get("down"))
+    _add_counter(traffic, "rx", ssid_stats.get("up"))
+    _add_counter(traffic, "txP", ssid_stats.get("downPkts"))
+    _add_counter(traffic, "rxP", ssid_stats.get("upPkts"))
+    for required_key in ("tx", "rx", "txP", "rxP", "txDP", "rxDP", "txEP", "rxEP", "txRP", "rxRP"):
+        traffic.setdefault(required_key, 0)
+
+
 def _wireless_info(
     radio: Mapping[str, Any],
     interfaces: tuple[Mapping[str, Any], ...],
@@ -330,7 +350,10 @@ def _ssid_stats(interface: Mapping[str, Any]) -> dict[str, object] | None:
     }
     bssid = interface.get("bssid") or config.get("bssid") or config.get("macaddr")
     if bssid:
-        stats["bssid"] = str(bssid)
+        try:
+            stats["bssid"] = to_omada(str(bssid))
+        except ValueError:
+            stats["bssid"] = str(bssid)
     counters = _mapping(interface.get("statistics") or interface.get("stats"))
     if counters:
         # Omada names traffic from AP perspective: tx is downlink to the client,
@@ -399,6 +422,15 @@ def _copy_counter(
         except (TypeError, ValueError):
             continue
         return
+
+
+def _add_counter(target: dict[str, object], target_key: str, value: object) -> None:
+    try:
+        parsed = max(0, int(value)) if value is not None else 0
+    except (TypeError, ValueError):
+        parsed = 0
+    if parsed or target_key in target:
+        target[target_key] = int(target.get(target_key, 0)) + parsed
 
 
 def _counter(source: Mapping[str, Any], *source_keys: str) -> int:

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ....contexts.clients.domain import ClientPortalState, ClientRadioBand, WirelessClientState
 from ....shared.domain import MacAddress
+from ....util.mac_format import to_omada
 
 
 @dataclass(frozen=True)
@@ -68,7 +69,7 @@ def clients_from_dhcp_leases(leases: tuple[DhcpLease, ...]) -> tuple[WirelessCli
 def client_stats_payload(clients: tuple[WirelessClientState, ...]) -> list[dict]:
     payload = []
     for client in clients:
-        item: dict[str, object] = {"mac": client.mac}
+        item: dict[str, object] = {"mac": to_omada(client.mac)}
         if client.ipv4:
             item["ip"] = client.ipv4
         if client.ipv6:
@@ -111,6 +112,28 @@ def merge_wireless_client_states(
         for client in clients:
             existing = by_mac.get(client.mac)
             by_mac[client.mac] = client if existing is None else _merge_client(existing, client)
+    return tuple(by_mac[mac] for mac in sorted(by_mac))
+
+
+def merge_associated_wireless_client_states(
+    associated_clients: tuple[WirelessClientState, ...],
+    *metadata_groups: tuple[WirelessClientState, ...],
+) -> tuple[WirelessClientState, ...]:
+    """Enrich only clients that are currently associated to hostapd.
+
+    DHCP leases and openNDS session tables outlive Wi-Fi association state on
+    OpenWrt. Reporting those records directly makes Omada keep disconnected
+    clients as active stations, so production inform uses hostapd as the
+    source of truth and treats other sources as metadata overlays.
+    """
+    by_mac: dict[str, WirelessClientState] = {
+        client.mac: client for client in associated_clients
+    }
+    for clients in metadata_groups:
+        for client in clients:
+            existing = by_mac.get(client.mac)
+            if existing is not None:
+                by_mac[client.mac] = _merge_client(existing, client)
     return tuple(by_mac[mac] for mac in sorted(by_mac))
 
 
