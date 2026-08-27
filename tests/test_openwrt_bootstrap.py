@@ -114,6 +114,10 @@ def test_bootstrap_configures_opennds_base_and_disables_preemptive_auth():
                 returncode=0,
                 stdout="2050\n",
             ),
+            ("uci", "-q", "get", "opennds.@opennds[0].gatewayfqdn"): CommandResult(
+                returncode=0,
+                stdout="status.client\n",
+            ),
         }
     )
     bootstrap = OpenWrtStartupBootstrap(
@@ -131,6 +135,7 @@ def test_bootstrap_configures_opennds_base_and_disables_preemptive_auth():
     assert "set opennds.@opennds[0].enabled='1'" in batch
     assert "set opennds.@opennds[0].gatewayinterface='br-lan'" in batch
     assert "set opennds.@opennds[0].gatewayname='OpenOmada Ubatuba'" in batch
+    assert "set opennds.@opennds[0].gatewayfqdn='disable'" in batch
     assert "set opennds.@opennds[0].allow_preemptive_authentication='0'" in batch
     assert (("/etc/init.d/opennds", "restart"), None) in runner.calls
 
@@ -157,6 +162,10 @@ def test_bootstrap_starts_opennds_when_base_config_is_already_current():
             ("uci", "-q", "get", "opennds.@opennds[0].gatewayname"): CommandResult(
                 returncode=0,
                 stdout="OpenOmada-AP\n",
+            ),
+            ("uci", "-q", "get", "opennds.@opennds[0].gatewayfqdn"): CommandResult(
+                returncode=0,
+                stdout="disable\n",
             ),
             (
                 "uci",

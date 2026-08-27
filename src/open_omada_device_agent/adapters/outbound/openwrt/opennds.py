@@ -122,6 +122,7 @@ class OpenNdsPortalAdapter:
             )
         else:
             commands.append(["uci", "set", "opennds.@opennds[0].login_option_enabled=1"])
+        commands.append(["uci", "set", "opennds.@opennds[0].gatewayfqdn=disable"])
         commands.append(["uci", "set", "opennds.@opennds[0].allow_preemptive_authentication=0"])
         commands.append(["uci", "commit", "opennds"])
         commands.append(["/etc/init.d/opennds", "restart"])

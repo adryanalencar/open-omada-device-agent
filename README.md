@@ -223,8 +223,11 @@ At startup on OpenWrt, the agent also applies an idempotent platform bootstrap:
 it sets `bridge_empty=1` on the configured LAN bridge so Wi-Fi-only devices can
 create `br-lan`, reloads network/Wi-Fi when that prerequisite changed, enables
 openNDS on the LAN bridge when installed, and disables openNDS preemptive
-authentication so clients follow the Omada ThemeSpec redirect. Lab WAN access
-for SSH/LuCI is available only through `OMADA_OPENWRT_ENABLE_WAN_MANAGEMENT=true`.
+authentication so clients follow the Omada ThemeSpec redirect. It also sets
+`gatewayfqdn=disable` so the first openNDS preauth redirect uses the gateway IP
+instead of the default `status.client` name; this keeps macOS/iOS captive checks
+working when a client has custom DNS such as `8.8.8.8`. Lab WAN access for
+SSH/LuCI is available only through `OMADA_OPENWRT_ENABLE_WAN_MANAGEMENT=true`.
 
 Validated behavior today:
 
@@ -241,6 +244,9 @@ Validated behavior today:
 - The openNDS adapter disables `allow_preemptive_authentication` and relies on
   the classic HTTP redirect path; this avoids Android CPD/RFC8910 opening a
   generic status page instead of the Omada-configured portal URL.
+- The openNDS adapter disables `gatewayfqdn`, so captive clients are redirected
+  to the gateway IP and do not need to resolve the local-only `status.client`
+  hostname.
 - Omada `clientConfig.unauth` is translated into `ndsctl auth/deauth`.
 - When `conntrack` is installed, deauth also clears flows for the client's IP
   so previously authenticated sessions stop immediately.
