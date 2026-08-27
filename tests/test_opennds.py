@@ -252,6 +252,7 @@ def test_openomada_redirect_themespec_decodes_iw_hex_escaped_ssid():
     script = "\n".join(
         (
             build_openomada_redirect_themespec(policy),
+            "_openomada_backslash_unescape() { printf '%s' \"$1\"; }",
             "iw() {",
             "    printf '%s\\n' 'Interface phy0-ap0'",
             "    printf '%s\\n' '        ssid Ubatuba - Wifi Gr\\xc3\\xa1tis'",
