@@ -22,6 +22,9 @@ class EcspCodecTests(unittest.TestCase):
 
     def test_message_types(self):
         self.assertEqual(int(MessageType.DISCOVERY), 1)
+        self.assertEqual(int(MessageType.EVENT_PORTAL_QUERY), 64)
+        self.assertEqual(int(MessageType.EVENT_PORTAL_AUTH), 128)
+        self.assertEqual(int(MessageType.EVENT_PORTAL_AUTH_RESPONSE), 352)
         self.assertEqual(int(MessageType.INFORM_REQUEST), 256)
         self.assertEqual(int(MessageType.GET_REQUEST), 24576)
         self.assertEqual(int(MessageType.GET_RESPONSE), 28672)

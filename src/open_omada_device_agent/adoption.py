@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .adapters.inbound.ecsp.mappers.configuration import parse_set_request
+from .adapters.inbound.ecsp.mappers.portal_auth import parse_portal_auth_request
 
 from .adapters.inbound.ecsp.crypto import calculate_md5_mode_auth
 from .application.commands import ApplyDeviceConfigurationCommand
@@ -460,6 +461,52 @@ def _send_notify_reply(
     return True
 
 
+def _portal_auth_response_body(*, errcode: int = CONFIG_OK) -> dict[str, Any]:
+    return {"err": int(errcode)}
+
+
+def _handle_portal_auth_request(
+    sock: socket.socket,
+    request: dict[str, Any],
+    *,
+    controller_id: str,
+    dump_json: bool,
+    services: ManagedSessionServices,
+) -> tuple[int | None, int]:
+    request_header = request.get("header") or {}
+    request_seq = request_header.get("seq")
+    errcode = CONFIG_OK
+    try:
+        update = parse_portal_auth_request(request)
+        log.info("Parsed AP EVENT_PORTAL_AUTH domains: %s", _describe_config_update(update))
+        errcode = _apply_config_update(update, services=services)
+    except ValueError as exc:
+        errcode = CONFIG_ERROR
+        log.warning("Could not parse AP EVENT_PORTAL_AUTH body: %s", exc)
+
+    if request_seq is None:
+        log.info(
+            "Controller EVENT_PORTAL_AUTH has no ECSP seq; applied locally without response errcode=%d",
+            errcode,
+        )
+        return None, errcode
+
+    response = build_message(
+        mac=services.settings.mac,
+        msg_type=MessageType.EVENT_PORTAL_AUTH_RESPONSE,
+        body=_portal_auth_response_body(errcode=errcode),
+        version=services.settings.ecsp_version,
+        ver_cap=services.settings.ecsp_ver_cap,
+        seq=request_seq,
+        dest=controller_id,
+        timestamp=int(time.time() * 1000),
+        error=0,
+    )
+    send_tcp_message(sock, response)
+    _log_message("TX/TCP", response, dump_json=dump_json)
+    return int(request_seq), errcode
+
+
 def _send_forget_response(
     sock: socket.socket,
     request: dict[str, Any],
@@ -860,6 +907,20 @@ def run_v2_adoption(
                 )
                 if replied:
                     log.error("Controller NOTIFY_REQUEST subject is unsupported locally")
+            elif msg_type == int(MessageType.EVENT_PORTAL_AUTH):
+                portal_sequence_id, portal_errcode = _handle_portal_auth_request(
+                    sock,
+                    message,
+                    controller_id=controller_id,
+                    dump_json=dump_json,
+                    services=services,
+                )
+                if portal_errcode != CONFIG_OK:
+                    log.error(
+                        "Controller EVENT_PORTAL_AUTH failed locally: errcode=%d seq=%s",
+                        portal_errcode,
+                        portal_sequence_id,
+                    )
             elif msg_type in {
                 int(MessageType.FORGET_REQUEST),
                 int(MessageType.FORGET_REQUEST_NO_RESET),
