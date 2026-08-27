@@ -216,7 +216,7 @@ def test_parse_client_operation_requires_client_mac():
         parse_config_body({"clientOperation": [{"operation": 2}]})
 
 
-def test_parse_initial_controller_defaults_as_ack_only_config():
+def test_parse_initial_controller_defaults_as_passive_config():
     update = parse_config_body(
         {
             "lanSetting": {
@@ -237,7 +237,8 @@ def test_parse_initial_controller_defaults_as_ack_only_config():
     )
 
     assert update.unhandled_keys == ()
-    assert update.ack_only_keys == (
+    assert update.ack_only_keys == ()
+    assert update.passive_keys == (
         "ipGroup",
         "ipv6Group",
         "lanSetting",

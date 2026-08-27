@@ -34,7 +34,10 @@ SSID_KEYS: dict[str, RadioBand] = {
 }
 
 KNOWN_COMMON_KEYS = {"sequenceId", "configVersion", "configVersionInc"}
-ACK_ONLY_CONFIG_KEYS = {
+# Controller-level defaults that are part of ordinary Omada AP config pushes but
+# do not currently require a direct OpenWrt side effect for the supported AP
+# runtime to stay correct.
+CONTROL_PLANE_PASSIVE_CONFIG_KEYS = {
     "ipGroup",
     "ipv6Group",
     "lanSetting",
@@ -50,6 +53,7 @@ ACK_ONLY_CONFIG_KEYS = {
 # OpenWrt side effect. They should not block the actionable SSID/radio domains
 # carried by the same SET_REQUEST.
 PASSIVE_CONFIG_KEYS = {
+    *CONTROL_PLANE_PASSIVE_CONFIG_KEYS,
     "schedulerAssoc",
     "wirelessAdv_2G",
     "wirelessAdv_5G",
@@ -57,7 +61,9 @@ PASSIVE_CONFIG_KEYS = {
     "wirelessAdv_6G",
 }
 
-KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | ACK_ONLY_CONFIG_KEYS | PASSIVE_CONFIG_KEYS | {
+ACK_ONLY_CONFIG_KEYS: set[str] = set()
+
+KNOWN_CONFIG_KEYS = set(RADIO_KEYS) | set(SSID_KEYS) | PASSIVE_CONFIG_KEYS | {
     "clientConfig",
     "clientOperation",
     "clientOperation_cmd",
