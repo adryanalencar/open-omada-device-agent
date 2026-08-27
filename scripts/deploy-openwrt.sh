@@ -71,7 +71,7 @@ fi
 echo "Deploying Open Omada agent source to $OPENWRT_HOST:$REMOTE_DIR"
 
 # shellcheck disable=SC2086
-COPYFILE_DISABLE=1 tar -C "$PROJECT_ROOT" -cf - src/open_omada_device_agent agent.py pyproject.toml README.md docs \
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$PROJECT_ROOT" -cf - src/open_omada_device_agent agent.py pyproject.toml README.md docs \
     | ssh $SSH_OPTS "$OPENWRT_HOST" "mkdir -p '$REMOTE_DIR' && tar -C '$REMOTE_DIR' -xf -"
 
 if [ "$RESTART" -eq 0 ]; then
