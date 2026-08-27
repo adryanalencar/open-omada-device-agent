@@ -14,7 +14,7 @@ identifiers.
 | System negotiation | ✅ | Config/version metadata consumed |
 | Initial sync result | ✅ | ACK validated |
 | Inform | 🟡 | Device, wired LAN, DHCP lease clients, hostapd station metrics, and OpenWrt `wSettings_*` / `ssidStats_*` when `ubus` is available |
-| SET | 🟡 | Envelope/version ACKs plus parsed AP domains; unsupported keys return local error instead of fake success |
+| SET | 🟡 | Envelope/version ACKs plus parsed AP domains; unsupported keys return local error instead of fake success; common controller defaults such as `ssh`, `snmp`, `lldp`, `ipGroup`, `ipv6Group`, `lanSetting`, `logSetting`, and scheduler/mac-filter globals are accepted as passive when they do not require OpenWrt changes |
 | WLAN/radio config | 🟡 | OpenWrt UCI adapter for basic radios and PSK SSIDs |
 | SSID VLAN config | 🟡 | Opt-in UCI network interface mapping; dynamic VLAN/Option82 remain rejected unless implemented |
 | Management VLAN config | 🟡 | Opt-in UCI device remapping via explicit local target variables |
