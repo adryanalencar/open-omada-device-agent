@@ -207,7 +207,10 @@ seconds, and query values use form encoding (`+` for spaces).
 | --- | --- | --- |
 | `OMADA_DHCP_LEASE_FILE` | `/tmp/dhcp.leases` | dnsmasq lease file used to report real IP/hostname client data |
 
-If the lease file is absent, client entries are omitted.
+If the lease file is absent, DHCP enrichment is skipped. DHCP leases and
+openNDS sessions are metadata sources only: production inform reports a client
+only when the same MAC is currently present in the latest hostapd association
+list. This prevents disconnected clients from lingering as active Omada clients.
 
 ## LED control
 
