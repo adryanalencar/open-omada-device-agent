@@ -71,7 +71,7 @@ fi
 echo "Deploying Open Omada agent source to $OPENWRT_HOST:$REMOTE_DIR"
 
 # shellcheck disable=SC2086
-tar -C "$PROJECT_ROOT" -cf - src/open_omada_device_agent agent.py pyproject.toml README.md docs \
+COPYFILE_DISABLE=1 tar -C "$PROJECT_ROOT" -cf - src/open_omada_device_agent agent.py pyproject.toml README.md docs \
     | ssh $SSH_OPTS "$OPENWRT_HOST" "mkdir -p '$REMOTE_DIR' && tar -C '$REMOTE_DIR' -xf -"
 
 if [ "$RESTART" -eq 0 ]; then
@@ -106,13 +106,27 @@ if ! command -v ndsctl >/dev/null 2>&1; then
     echo "Warning: ndsctl not found; openNDS portal telemetry/control will be limited" >&2
 fi
 
-pids="$(ps w | awk -v py="$REMOTE_PYTHON" -v agent="$REMOTE_AGENT" '$5 == py && $6 == agent {print $1}')"
+agent_pids() {
+    ps w | awk -v agent="$REMOTE_AGENT" '
+        $1 ~ /^[0-9]+$/ && index($0, agent) && !index($0, " awk ") && !index($0, " grep ") {print $1}
+    '
+}
+
+pids="$(agent_pids)"
 if [ -n "$pids" ]; then
     echo "Stopping existing open-omada-agent process(es): $pids"
     for pid in $pids; do
         kill "$pid" 2>/dev/null || true
     done
     sleep 2
+    remaining_pids="$(agent_pids)"
+    if [ -n "$remaining_pids" ]; then
+        echo "Force-stopping existing open-omada-agent process(es): $remaining_pids"
+        for pid in $remaining_pids; do
+            kill -9 "$pid" 2>/dev/null || true
+        done
+        sleep 1
+    fi
 fi
 
 stamp="$(date +%Y%m%d-%H%M%S 2>/dev/null || echo now)"
@@ -130,7 +144,7 @@ else
 fi
 
 sleep 5
-new_pids="$(ps w | awk -v py="$REMOTE_PYTHON" -v agent="$REMOTE_AGENT" '$5 == py && $6 == agent {print $1}')"
+new_pids="$(agent_pids)"
 if [ -z "$new_pids" ]; then
     echo "open-omada-agent did not stay running. Last log lines:" >&2
     tail -80 "$LOG_FILE" 2>/dev/null || true
