@@ -127,7 +127,7 @@ def test_builds_opennds_policy_with_controller_portal_redirect():
     assert policy.portal_redirect_url == "https://portal.example.com/login"
     assert policy.landing_page_url == "https://example.com/after-login"
     assert policy.default_ssid_name == "lab-wlan"
-    assert policy.ap_mac == "02:11:22:33:44:55"
+    assert policy.ap_mac == "02-11-22-33-44-55"
     assert policy.site_name == "HQ"
 
 

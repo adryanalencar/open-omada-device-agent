@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from . import config
-from .ecsp import normalize_mac
+from .util.mac_format import to_omada
 from .network_tools import get_public_ip
 from .system_tools import get_cpu_utilization, get_memory_utilization, get_system_uptime
 
 
 def device_info() -> dict:
-    mac = normalize_mac(config.MAC)
+    mac = to_omada(config.MAC)
     ip_address = get_public_ip()
     up_time = get_system_uptime()
     cpu_utilization = get_cpu_utilization()

@@ -607,7 +607,7 @@ def _portal_default_ssid_name(portal_configs: tuple[PortalConfiguration, ...]) -
 
 def _portal_ap_mac(value: object) -> str | None:
     try:
-        return MacAddress(str(value)).value
+        return MacAddress(str(value)).omada
     except ValueError:
         return None
 

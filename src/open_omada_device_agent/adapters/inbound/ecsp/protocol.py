@@ -7,6 +7,8 @@ import struct
 from enum import IntEnum
 from typing import Any, Mapping
 
+from open_omada_device_agent.util.mac_format import to_omada
+
 LENGTH_SIZE = 4
 MAX_DISCOVERY_PAYLOAD = 2000
 MAX_TCP_PAYLOAD = 8 * 1024 * 1024
@@ -82,7 +84,7 @@ def build_message(
             "version": str(version),
             "verCap": int(ver_cap),
             "device": device,
-            "mac": normalize_mac(mac),
+            "mac": to_omada(mac),
             "type": int(msg_type),
             "error": int(error),
         }

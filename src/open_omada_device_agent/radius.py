@@ -11,8 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .domain import SecretValue
-from .ecsp import normalize_mac
 from .portal import PortalSession, PortalSessionManager
+from .util.mac_format import to_omada
 
 ACCESS_REQUEST = 1
 ACCESS_ACCEPT = 2
@@ -331,4 +331,4 @@ def _text(value: str) -> bytes:
 
 
 def _radius_mac(value: str) -> str:
-    return normalize_mac(value).replace(":", "-").upper()
+    return to_omada(value)

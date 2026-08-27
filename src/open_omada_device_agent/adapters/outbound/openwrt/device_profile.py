@@ -102,7 +102,7 @@ class GenericOpenWrtAccessPointProfile:
             "wirelessLinked": False,
             "p2p": False,
             "supportBridge": 0,
-            "mainMac": identity.mac.value,
+            "mainMac": identity.mac.omada,
         }
 
     def device_misc(self) -> dict[str, Any]:
