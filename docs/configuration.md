@@ -28,7 +28,7 @@ cp .env.example .env
 | Variable | Description |
 | --- | --- |
 | `OMADA_CONTROLLER_ID` | Logical controller identifier used by the ECSP management session |
-| `OMADA_SITE_ID` | Site-scoped destination used by discovery when known |
+| `OMADA_SITE_ID` | Site-scoped discovery target and preferred External Portal `site` parameter |
 | `OMADA_DEST_OMADAC_ID` | Low-level discovery destination override when no Site ID is used |
 
 For the tested Controller 6.2 family, Controller IDs are typically 32
@@ -121,7 +121,7 @@ where lab-only manual setup belongs.
 | `OMADA_OPENWRT_BOOTSTRAP_OPENNDS` | `true` | Enable and start openNDS when installed |
 | `OMADA_OPENNDS_GATEWAY_PORT` | `2050` | openNDS local gateway port |
 | `OMADA_OPENNDS_GATEWAY_NAME` | device name | openNDS gateway name; empty uses `OMADA_DEVICE_NAME` |
-| `OMADA_SITE_NAME` | empty | Human-readable Omada site name sent as `site` in External Portal redirects when the Controller does not include `siteName` |
+| `OMADA_SITE_NAME` | empty | Human-readable fallback for External Portal redirects when no site ID is available |
 | `OMADA_OPENWRT_ENABLE_WAN_MANAGEMENT` | `false` | Lab-only opt-in to open SSH, LuCI HTTP, and LuCI HTTPS from the WAN zone |
 | `OMADA_OPENWRT_WAN_ZONE` | `wan` | Firewall zone used by the WAN management opt-in rules |
 
@@ -184,7 +184,8 @@ With openNDS installed, the agent:
   `login_option_enabled=3` when Omada provides a portal URL through
   `portalConfigList` or a `/portal/...` free-policy URL;
 - redirects EAP clients with the TP-Link External Portal query contract:
-  `clientMac`, `apMac`, `ssidName`, `t`, `radioId`, `site`, and `redirectUrl`;
+  `clientMac`, `clientIp`, `t`, `site`, `redirectUrl`, `apMac`,
+  `ssidName`, and `radioId`;
 - sets `allow_preemptive_authentication=0` so clients use the classic HTTP
   redirect path instead of stopping at the openNDS RFC8910 status page;
 - applies `clientConfig.unauth=false` with `ndsctl auth`;
@@ -193,12 +194,12 @@ With openNDS installed, the agent:
   installed;
 - does not install its own `inet openomada_portal` table.
 
-The generated ThemeSpec derives `clientMac` and `originurl` from openNDS FAS
-variables, uses `OMADA_DEVICE_MAC` for `apMac`, falls back to `iw dev <clientif>
-info` for SSID/radio detection, and uses `OMADA_SITE_NAME` when Omada did not
-send a `siteName` value in `portalConfigList`. It intentionally does not append
-`clientIp` because that field is not part of the documented EAP External Portal
-URL.
+The generated ThemeSpec derives `clientMac`, `clientIp`, and `originurl` from
+openNDS FAS variables, uses `OMADA_DEVICE_MAC` for `apMac`, falls back to
+`iw dev <clientif> info` for SSID/radio detection, and uses `OMADA_SITE_ID` as
+the `site` parameter when available. `OMADA_SITE_NAME` is only a fallback. MAC
+addresses are emitted in Omada portal form (`AA-BB-CC-DD-EE-FF`), timestamps are
+seconds, and query values use form encoding (`+` for spaces).
 
 ## DHCP/client tracking
 

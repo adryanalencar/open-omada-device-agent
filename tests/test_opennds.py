@@ -166,12 +166,14 @@ def test_builds_openomada_redirect_themespec_with_omada_eap_parameters():
         portal_configs=(
             PortalConfiguration(
                 redirect_url="https://example.com/after-login",
+                site_id="ffff16a3ab739b57bd5247ec2ff8b",
                 site_name="Pereque Mirim",
                 ssid_list=("Ubatuba - Wifi Grátis",),
             ),
         ),
         controller_host="",
         device_mac="02:11:22:33:44:55",
+        site_id="ffff16a3ab739b57bd5247ec2ff8b",
     )
     script = build_openomada_redirect_themespec(policy)
 
@@ -185,7 +187,7 @@ def test_builds_openomada_redirect_themespec_with_omada_eap_parameters():
     assert "radioId" in script
     assert "site" in script
     assert "redirectUrl" in script
-    assert "clientIp" not in script
+    assert "clientIp" in script
     assert "originurl" in script
     assert "meta http-equiv" in script
 
@@ -198,19 +200,23 @@ def test_openomada_redirect_themespec_emits_tp_link_external_portal_url():
         portal_configs=(
             PortalConfiguration(
                 redirect_url="https://example.com/after-login",
+                site_id="ffff16a3ab739b57bd5247ec2ff8b",
                 site_name="Pereque Mirim",
                 ssid_list=("Ubatuba - Wifi Grátis",),
             ),
         ),
         controller_host="",
         device_mac="02:11:22:33:44:55",
+        site_id="ffff16a3ab739b57bd5247ec2ff8b",
     )
     script = "\n".join(
         (
             build_openomada_redirect_themespec(policy),
             "clientmac='aa:bb:cc:dd:ee:ff'",
+            "clientip='192.168.1.123'",
             "clientif=''",
             "originurl='http%3A%2F%2Forigin.example%2Fpath'",
+            "date() { printf '%s\\n' '1787784794'; }",
             "generate_splash_sequence",
         )
     )
@@ -224,12 +230,82 @@ def test_openomada_redirect_themespec_emits_tp_link_external_portal_url():
     )
 
     assert "https://mediabeach.com.br/portal/c00e9a43?x=1&amp;y=2" in result.stdout
-    assert "clientMac=aa%3abb%3acc%3add%3aee%3aff" in result.stdout
-    assert "apMac=02%3a11%3a22%3a33%3a44%3a55" in result.stdout
-    assert "ssidName=Ubatuba%20-%20Wifi%20Gr%c3%a1tis" in result.stdout
+    assert "clientMac=AA-BB-CC-DD-EE-FF" in result.stdout
+    assert "clientIp=192.168.1.123" in result.stdout
+    assert "t=1787784794" in result.stdout
+    assert "site=ffff16a3ab739b57bd5247ec2ff8b" in result.stdout
+    assert "apMac=02-11-22-33-44-55" in result.stdout
+    assert "ssidName=Ubatuba+-+Wifi+Gr%C3%A1tis" in result.stdout
     assert "radioId=0" in result.stdout
-    assert "site=Pereque%20Mirim" in result.stdout
-    assert "redirectUrl=https%3a%2f%2fexample.com%2fafter-login" in result.stdout
+    assert "redirectUrl=https%3A%2F%2Fexample.com%2Fafter-login" in result.stdout
+
+
+def test_openomada_redirect_themespec_decodes_iw_hex_escaped_ssid():
+    policy = opennds_portal_policy_from_omada_config(
+        free_policy=PortalFreePolicy(
+            url_rules=({"url": "mediabeach.com.br/portal/c00e9a43"},)
+        ),
+        portal_configs=(PortalConfiguration(site_name="Pereque Mirim"),),
+        controller_host="",
+        device_mac="02:11:22:33:44:55",
+    )
+    script = "\n".join(
+        (
+            build_openomada_redirect_themespec(policy),
+            "iw() {",
+            "    printf '%s\\n' 'Interface phy0-ap0'",
+            "    printf '%s\\n' '        ssid Ubatuba - Wifi Gr\\xc3\\xa1tis'",
+            "    printf '%s\\n' '        channel 6 (2437 MHz), width: 20 MHz'",
+            "}",
+            "clientmac='aa:bb:cc:dd:ee:ff'",
+            "clientif='phy0-ap0'",
+            "generate_splash_sequence",
+        )
+    )
+
+    result = subprocess.run(
+        ["/bin/sh"],
+        input=script,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+
+    assert "ssidName=Ubatuba+-+Wifi+Gr%C3%A1tis" in result.stdout
+
+
+def test_openomada_redirect_themespec_decodes_opennds_html_escaped_origin_url():
+    policy = opennds_portal_policy_from_omada_config(
+        free_policy=PortalFreePolicy(
+            url_rules=({"url": "mediabeach.com.br/portal/c00e9a43"},)
+        ),
+        portal_configs=(PortalConfiguration(site_id="ffff16a3ab739b57bd5247ec2ff8b"),),
+        controller_host="",
+        device_mac="02:11:22:33:44:55",
+    )
+    script = "\n".join(
+        (
+            build_openomada_redirect_themespec(policy),
+            "clientmac='aa:bb:cc:dd:ee:ff'",
+            "clientip='192.168.1.123'",
+            "clientif=''",
+            "originurl='http:&#47;&#47;connectivitycheck.gstatic.com&#47;generate_204'",
+            "generate_splash_sequence",
+        )
+    )
+
+    result = subprocess.run(
+        ["/bin/sh"],
+        input=script,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+
+    assert (
+        "redirectUrl=http%3A%2F%2Fconnectivitycheck.gstatic.com%2Fgenerate_204"
+        in result.stdout
+    )
 
 
 def test_opennds_portal_adapter_applies_walled_garden_to_uci():

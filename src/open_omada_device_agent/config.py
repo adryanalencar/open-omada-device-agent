@@ -118,8 +118,10 @@ LAB_ACK_CONTROL_PLANE_CONFIG = _bool("OMADA_LAB_ACK_CONTROL_PLANE_CONFIG", False
 ECSP_VERSION = os.getenv("OMADA_ECSP_VERSION", "2.3.0")
 ECSP_VER_CAP = _int("OMADA_ECSP_VER_CAP", 2)
 
-# Controller/site routing. A site-scoped discovery destination is a 24-character
-# Site ID; the Omada external portal query needs the human-readable site name.
+# Controller/site routing. The same Site ID is used for site-scoped discovery
+# and, when available, for Omada External Portal redirects. The human-readable
+# site name is kept as a fallback for controllers/configs that do not expose an
+# ID in the local environment.
 CONTROLLER_ID = os.getenv("OMADA_CONTROLLER_ID", "").strip()
 DEST_OMADAC_ID = os.getenv("OMADA_DEST_OMADAC_ID", "").strip()
 SITE_ID = os.getenv("OMADA_SITE_ID", "").strip()

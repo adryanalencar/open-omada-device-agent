@@ -37,6 +37,7 @@ class PortalConfiguration:
     auth_server_type: int | None = None
     ext_auth_server: str | None = None
     external_portal_server: str | None = None
+    site_id: str | None = None
     site_name: str | None = None
     portal_title: str | None = None
     portal_accept: bool | None = None
