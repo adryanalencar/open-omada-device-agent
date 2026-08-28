@@ -170,6 +170,7 @@ Minimal UCI example:
 uci set opennds.@opennds[0].enabled='1'
 uci set opennds.@opennds[0].gatewayinterface='br-lan'
 uci set opennds.@opennds[0].gatewayport='2050'
+uci set opennds.@opennds[0].gatewayfqdn='disable'
 uci commit opennds
 /etc/init.d/opennds restart
 ```
@@ -188,6 +189,9 @@ With openNDS installed, the agent:
   `ssidName`, and `radioId`;
 - sets `allow_preemptive_authentication=0` so clients use the classic HTTP
   redirect path instead of stopping at the openNDS RFC8910 status page;
+- sets `gatewayfqdn=disable` so the openNDS preauth redirect uses the gateway
+  IP instead of the local-only `status.client` hostname. This avoids breaking
+  captive portal flow on clients that ignore DHCP DNS and use a custom resolver;
 - applies `clientConfig.unauth=false` with `ndsctl auth`;
 - applies `clientConfig.unauth=true` with `ndsctl deauth`;
 - clears conntrack entries for the client IP after deauth when `conntrack` is
@@ -207,7 +211,10 @@ seconds, and query values use form encoding (`+` for spaces).
 | --- | --- | --- |
 | `OMADA_DHCP_LEASE_FILE` | `/tmp/dhcp.leases` | dnsmasq lease file used to report real IP/hostname client data |
 
-If the lease file is absent, client entries are omitted.
+If the lease file is absent, DHCP enrichment is skipped. DHCP leases and
+openNDS sessions are metadata sources only: production inform reports a client
+only when the same MAC is currently present in the latest hostapd association
+list. This prevents disconnected clients from lingering as active Omada clients.
 
 ## LED control
 

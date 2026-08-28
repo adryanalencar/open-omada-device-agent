@@ -10,7 +10,12 @@ from ..adapters.outbound.openwrt.device_commands import OpenWrtClientControlAdap
 from ..adapters.outbound.openwrt.uci import OpenWrtUciAdapter
 from ..adapters.outbound.openwrt.capabilities import detect_platform_capabilities
 from ..adapters.outbound.openwrt.portal_runtime import OpenWrtPortalRuntime
-from ..adapters.outbound.openwrt.client_observations import client_stats_payload, clients_from_dhcp_leases, load_dnsmasq_leases, merge_wireless_client_states
+from ..adapters.outbound.openwrt.client_observations import (
+    client_stats_payload,
+    clients_from_dhcp_leases,
+    load_dnsmasq_leases,
+    merge_associated_wireless_client_states,
+)
 from ..network_tools import get_public_ip
 from ..adapters.outbound.openwrt.device_profile import GenericOpenWrtAccessPointProfile
 from .settings import AgentSettings
@@ -99,9 +104,9 @@ def build_runtime(settings: AgentSettings) -> AgentRuntime:
         inform=InformAssembler(
             device_info=profile.device_info,
             lan=LanObservation(settings.lan_rate, settings.lan_duplex, settings.lan_port),
-            clients=lambda: merge_wireless_client_states(
-                clients_from_dhcp_leases(load_dnsmasq_leases(settings.dhcp_lease_file)),
+            clients=lambda: merge_associated_wireless_client_states(
                 collect_openwrt_wireless_clients(capabilities=capabilities),
+                clients_from_dhcp_leases(load_dnsmasq_leases(settings.dhcp_lease_file)),
                 collect_opennds_clients(capabilities=capabilities),
             ),
             client_projection=client_stats_payload,

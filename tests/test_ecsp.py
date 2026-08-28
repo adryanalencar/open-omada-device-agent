@@ -15,6 +15,7 @@ class EcspCodecTests(unittest.TestCase):
             version="2.3.0",
             ver_cap=2,
         )
+        self.assertEqual(msg["header"]["mac"], "02-11-22-33-44-55")
         frame = encode_frame(msg)
         declared = struct.unpack("!I", frame[:4])[0]
         self.assertEqual(declared, len(frame) - 4)

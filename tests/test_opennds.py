@@ -127,7 +127,7 @@ def test_builds_opennds_policy_with_controller_portal_redirect():
     assert policy.portal_redirect_url == "https://portal.example.com/login"
     assert policy.landing_page_url == "https://example.com/after-login"
     assert policy.default_ssid_name == "lab-wlan"
-    assert policy.ap_mac == "02:11:22:33:44:55"
+    assert policy.ap_mac == "02-11-22-33-44-55"
     assert policy.site_name == "HQ"
 
 
@@ -354,6 +354,7 @@ def test_opennds_portal_adapter_applies_walled_garden_to_uci():
         ("uci", "set", "opennds.@opennds[0].allow_preemptive_authentication=0"),
         None,
     ) in runner.calls
+    assert (("uci", "set", "opennds.@opennds[0].gatewayfqdn=disable"), None) in runner.calls
     assert (("uci", "commit", "opennds"), None) in runner.calls
     assert (("/etc/init.d/opennds", "restart"), None) in runner.calls
 
@@ -390,6 +391,7 @@ def test_opennds_portal_adapter_enables_themespec_redirect():
         ),
         None,
     ) in runner.calls
+    assert (("uci", "set", "opennds.@opennds[0].gatewayfqdn=disable"), None) in runner.calls
 
 
 @dataclass

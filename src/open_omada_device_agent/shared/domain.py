@@ -28,6 +28,11 @@ class MacAddress:
     def __str__(self) -> str:
         return self.value
 
+    @property
+    def omada(self) -> str:
+        """Return the controller-facing MAC format used by Omada payloads."""
+        return self.value.replace(":", "-").upper()
+
 
 @dataclass(frozen=True, order=True)
 class IpAddress:

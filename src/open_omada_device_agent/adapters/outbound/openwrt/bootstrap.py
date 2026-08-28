@@ -194,6 +194,13 @@ class OpenWrtStartupBootstrap:
             lines,
             "opennds",
             section,
+            "gatewayfqdn",
+            "disable",
+        )
+        self._append_set_if_needed(
+            lines,
+            "opennds",
+            section,
             "allow_preemptive_authentication",
             "0",
         )

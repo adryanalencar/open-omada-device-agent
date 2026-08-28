@@ -37,8 +37,8 @@ Omada Network Application `6.2.14.11` and an EAP110 v4-compatible AP profile.
 | Radio/SSID configuration | 🟡 Partial OpenWrt UCI adapter |
 | SSID VLAN configuration | 🟡 Opt-in OpenWrt UCI adapter |
 | Management VLAN configuration | 🟡 Opt-in OpenWrt UCI adapter |
-| DHCP lease and hostapd client reporting | 🟡 Partial |
-| OpenWrt radio/SSID telemetry | 🟡 Partial via `ubus` |
+| DHCP lease, openNDS and hostapd client reporting | 🟡 Partial; hostapd association is source of truth |
+| OpenWrt radio/SSID telemetry | 🟡 Partial via `ubus`, hostapd counters and radio traffic aggregates |
 | Client operations and rate limits | 🟡 Optional `ubus`/nftables adapters |
 | LED enable/disable/locate | 🟡 Optional sysfs adapter |
 | FORGET / forget-no-reset response | ✅ Working |
@@ -46,7 +46,7 @@ Omada Network Application `6.2.14.11` and an EAP110 v4-compatible AP profile.
 | Portal RADIUS authentication | 🟡 Library support; not wired to HTTP portal flow |
 | `GET_REQUEST` | 🟡 Defensive unsupported-key responses |
 | Notify families | 🟡 Defensive unsupported replies |
-| Report family | 🚧 Not implemented |
+| Report family | 🚧 Envelope and protobuf DTOs identified; `reportData` serializer not implemented |
 | Switch/gateway/OLT device profiles | 🚧 Planned |
 
 The capability table is intentionally conservative. The agent advertises only
@@ -223,8 +223,11 @@ At startup on OpenWrt, the agent also applies an idempotent platform bootstrap:
 it sets `bridge_empty=1` on the configured LAN bridge so Wi-Fi-only devices can
 create `br-lan`, reloads network/Wi-Fi when that prerequisite changed, enables
 openNDS on the LAN bridge when installed, and disables openNDS preemptive
-authentication so clients follow the Omada ThemeSpec redirect. Lab WAN access
-for SSH/LuCI is available only through `OMADA_OPENWRT_ENABLE_WAN_MANAGEMENT=true`.
+authentication so clients follow the Omada ThemeSpec redirect. It also sets
+`gatewayfqdn=disable` so the first openNDS preauth redirect uses the gateway IP
+instead of the default `status.client` name; this keeps macOS/iOS captive checks
+working when a client has custom DNS such as `8.8.8.8`. Lab WAN access for
+SSH/LuCI is available only through `OMADA_OPENWRT_ENABLE_WAN_MANAGEMENT=true`.
 
 Validated behavior today:
 
@@ -241,10 +244,16 @@ Validated behavior today:
 - The openNDS adapter disables `allow_preemptive_authentication` and relies on
   the classic HTTP redirect path; this avoids Android CPD/RFC8910 opening a
   generic status page instead of the Omada-configured portal URL.
+- The openNDS adapter disables `gatewayfqdn`, so captive clients are redirected
+  to the gateway IP and do not need to resolve the local-only `status.client`
+  hostname.
 - Omada `clientConfig.unauth` is translated into `ndsctl auth/deauth`.
 - When `conntrack` is installed, deauth also clears flows for the client's IP
   so previously authenticated sessions stop immediately.
 - `ndsctl json` is merged into Omada client telemetry as portal state.
+- Client MACs, AP MACs, ECSP header MACs, `deviceInfo.mainMac`, SSID BSSIDs,
+  and portal redirect MAC parameters are serialized in Omada's controller-facing
+  format: `AA-BB-CC-DD-EE-FF`.
 - The old `inet openomada_portal` nftables fallback is skipped when openNDS is
   present.
 
@@ -253,6 +262,28 @@ Current limitation:
 - The agent does not host the external portal UI and does not submit
   `/hotspot/extPortal/auth` itself. The external portal configured in Omada must
   preserve the redirect query parameters and perform Controller authorization.
+
+### OpenWrt deployment helper
+
+From a development checkout, copy the current source to the Rock Pi OpenWrt
+filesystem and restart the agent:
+
+```bash
+scripts/deploy-openwrt.sh
+```
+
+Useful overrides:
+
+```bash
+OPENWRT_HOST=root@172.17.0.4 \
+REMOTE_DIR=/mnt/shared/open-omada-device-agent \
+AGENT_ARGS="--debug --dump-tx" \
+scripts/deploy-openwrt.sh
+```
+
+The script syncs the source tree with `tar` over SSH, preserves the remote
+`.env`, stops the current `/usr/bin/open-omada-agent` process, starts it again,
+and prints the last lines from `/tmp/open-omada-agent.log`.
 
 ## Documentation
 

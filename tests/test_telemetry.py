@@ -80,7 +80,7 @@ def test_maps_openwrt_wireless_status_to_omada_inform_keys():
         {
             "ssid": "guest",
             "clntNum": 1,
-            "bssid": "02:00:00:00:00:10",
+            "bssid": "02-00-00-00-00-10",
             "down": 1234,
             "up": 567,
             "downPkts": 12,
@@ -158,6 +158,18 @@ def test_collect_openwrt_wireless_telemetry_uses_hostapd_for_ssid_client_counts(
             "upPkts": 1,
         }
     ]
+    assert payload["radioTraffic_2G"] == {
+        "tx": 200,
+        "rx": 100,
+        "txP": 2,
+        "rxP": 1,
+        "txDP": 0,
+        "rxDP": 0,
+        "txEP": 0,
+        "rxEP": 0,
+        "txRP": 0,
+        "rxRP": 0,
+    }
     assert runner.calls == [
         ("ubus", "call", "network.wireless", "status"),
         ("ubus", "call", "hostapd.phy0-ap0", "get_clients"),
@@ -286,7 +298,7 @@ def test_inform_projection_accepts_merged_dhcp_and_hostapd_clients(tmp_path):
     )
     body = assembler.build(need_reply=False, uptime=0)
     client = body["clients"][0]
-    assert client["mac"] == "aa:bb:cc:dd:ee:ff"
+    assert client["mac"] == "AA-BB-CC-DD-EE-FF"
     assert client["ip"] == "192.0.2.10"
     assert client["name"] == "phone"
     assert client["ssid"] == "guest"

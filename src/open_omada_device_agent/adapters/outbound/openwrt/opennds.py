@@ -122,6 +122,7 @@ class OpenNdsPortalAdapter:
             )
         else:
             commands.append(["uci", "set", "opennds.@opennds[0].login_option_enabled=1"])
+        commands.append(["uci", "set", "opennds.@opennds[0].gatewayfqdn=disable"])
         commands.append(["uci", "set", "opennds.@opennds[0].allow_preemptive_authentication=0"])
         commands.append(["uci", "commit", "opennds"])
         commands.append(["/etc/init.d/opennds", "restart"])
@@ -607,7 +608,7 @@ def _portal_default_ssid_name(portal_configs: tuple[PortalConfiguration, ...]) -
 
 def _portal_ap_mac(value: object) -> str | None:
     try:
-        return MacAddress(str(value)).value
+        return MacAddress(str(value)).omada
     except ValueError:
         return None
 
