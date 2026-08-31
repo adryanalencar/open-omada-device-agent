@@ -3,7 +3,7 @@ from pathlib import Path
 import os
 
 from .. import config
-from ..application.settings import AgentSettings as RuntimeAgentSettings
+from ..application.settings import AgentSettings as RuntimeAgentSettings, GenieAcsSettings
 
 
 class AgentSettings(RuntimeAgentSettings):
@@ -11,6 +11,7 @@ class AgentSettings(RuntimeAgentSettings):
     def from_environment(cls) -> "AgentSettings":
         """Snapshot legacy environment configuration once at composition time."""
         return cls(
+            platform=config.PLATFORM,
             controller_host=config.CONTROLLER_HOST,
             discovery_port=config.DISCOVERY_PORT,
             manage_port=config.MANAGE_PORT,
@@ -71,17 +72,41 @@ class AgentSettings(RuntimeAgentSettings):
             device_cipher_type=config.DEVICE_CIPHER_TYPE,
             capability_environment=tuple(
                 sorted(
-                    (name, value)
-                    for name, value in os.environ.items()
-                    if name.startswith("OMADA_CAP_")
-                    or name
-                    in {
-                        "OMADA_PLATFORM",
-                        "OMADA_RADIO_BANDS",
-                        "OMADA_MAX_SSIDS",
-                        "OMADA_LED_BRIGHTNESS_PATH",
-                        "OMADA_LED_TRIGGER_PATH",
-                    }
+                    _capability_environment_items()
                 )
             ),
+            genieacs=GenieAcsSettings(
+                url=config.GENIEACS_URL,
+                device_id=config.GENIEACS_DEVICE_ID,
+                timeout_seconds=config.GENIEACS_TIMEOUT_SECONDS,
+                apply_timeout_seconds=config.GENIEACS_APPLY_TIMEOUT_SECONDS,
+                verify_tls=config.GENIEACS_VERIFY_TLS,
+                ca_bundle=(
+                    Path(config.GENIEACS_CA_BUNDLE).expanduser()
+                    if config.GENIEACS_CA_BUNDLE
+                    else None
+                ),
+                username=config.GENIEACS_USERNAME,
+                password=config.GENIEACS_PASSWORD,
+                token=config.GENIEACS_TOKEN,
+                max_response_bytes=config.GENIEACS_MAX_RESPONSE_BYTES,
+                max_device_staleness_seconds=config.GENIEACS_MAX_DEVICE_STALENESS_SECONDS,
+                max_client_staleness_seconds=config.GENIEACS_MAX_CLIENT_STALENESS_SECONDS,
+                refresh_interval_seconds=config.GENIEACS_REFRESH_INTERVAL_SECONDS,
+            ),
         )
+
+
+def _capability_environment_items() -> tuple[tuple[str, str], ...]:
+    items: dict[str, str] = {}
+    for name, value in os.environ.items():
+        if name.startswith("OMADA_CAP_") or name in {
+            "OMADA_PLATFORM",
+            "OMADA_RADIO_BANDS",
+            "OMADA_MAX_SSIDS",
+            "OMADA_LED_BRIGHTNESS_PATH",
+            "OMADA_LED_TRIGGER_PATH",
+        }:
+            items[name] = value
+    items.setdefault("OMADA_PLATFORM", config.PLATFORM)
+    return tuple(items.items())

@@ -97,6 +97,7 @@ MANAGEMENT_VLAN_DEVICE = os.getenv("OMADA_MANAGEMENT_VLAN_DEVICE", "").strip()
 # OpenWrt bootstrap. These settings are applied idempotently before ECSP
 # discovery so a Wi-Fi-only OpenWrt device can create br-lan, bind openNDS, and
 # optionally expose lab management on the WAN uplink.
+PLATFORM = os.getenv("OPENOMADA_PLATFORM", os.getenv("OMADA_PLATFORM", "auto")).strip().lower()
 OPENWRT_BOOTSTRAP = _bool("OMADA_OPENWRT_BOOTSTRAP", True)
 OPENWRT_BOOTSTRAP_LAN = _bool("OMADA_OPENWRT_BOOTSTRAP_LAN", True)
 OPENWRT_LAN_INTERFACE = os.getenv("OMADA_OPENWRT_LAN_INTERFACE", "lan").strip()
@@ -132,6 +133,28 @@ SITE_NAME = os.getenv("OMADA_SITE_NAME", "").strip()
 DEVICE_USERNAME = os.getenv("OMADA_DEVICE_USERNAME", "").strip()
 DEVICE_PASSWORD = os.getenv("OMADA_DEVICE_PASSWORD", "")
 DEVICE_CIPHER_TYPE = _int("OMADA_DEVICE_CIPHER_TYPE", 5)
+
+# Optional GenieACS/TR-069 backend configuration. GenieACS owns CWMP/TR-069;
+# OpenOmada talks only to the NBI HTTP API.
+GENIEACS_URL = os.getenv("GENIEACS_URL", "").strip()
+GENIEACS_DEVICE_ID = os.getenv("GENIEACS_DEVICE_ID", "").strip()
+GENIEACS_TIMEOUT_SECONDS = _float("GENIEACS_TIMEOUT_SECONDS", 10.0)
+GENIEACS_APPLY_TIMEOUT_SECONDS = _float("GENIEACS_APPLY_TIMEOUT_SECONDS", 15.0)
+GENIEACS_VERIFY_TLS = _bool("GENIEACS_VERIFY_TLS", True)
+GENIEACS_CA_BUNDLE = os.getenv("GENIEACS_CA_BUNDLE", "").strip()
+GENIEACS_USERNAME = os.getenv("GENIEACS_USERNAME", "").strip()
+GENIEACS_PASSWORD = os.getenv("GENIEACS_PASSWORD", "")
+GENIEACS_TOKEN = os.getenv("GENIEACS_TOKEN", "")
+GENIEACS_MAX_RESPONSE_BYTES = _int("GENIEACS_MAX_RESPONSE_BYTES", 1024 * 1024)
+GENIEACS_MAX_DEVICE_STALENESS_SECONDS = _int(
+    "GENIEACS_MAX_DEVICE_STALENESS_SECONDS",
+    300,
+)
+GENIEACS_MAX_CLIENT_STALENESS_SECONDS = _int(
+    "GENIEACS_MAX_CLIENT_STALENESS_SECONDS",
+    120,
+)
+GENIEACS_REFRESH_INTERVAL_SECONDS = _int("GENIEACS_REFRESH_INTERVAL_SECONDS", 300)
 
 # Keep the historical filename for backward compatibility with existing labs.
 _state_mac = MAC.replace(":", "").replace("-", "").lower()

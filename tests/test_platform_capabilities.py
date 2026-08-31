@@ -186,6 +186,18 @@ def test_capability_summary_is_secret_free_and_stable():
     assert "secret" not in summary.lower()
 
 
+def test_detects_genieacs_as_remote_backend_without_local_capabilities():
+    caps = detect_platform_capabilities(
+        env={"OPENOMADA_PLATFORM": "genieacs"},
+        command_exists=lambda _name: None,
+    )
+
+    assert caps.platform == "genieacs"
+    assert caps.supports_wlan_config is False
+    assert caps.supports_portal is False
+    assert caps.supports_client_operations is False
+
+
 def test_rejects_unknown_platform_and_radio_band():
     with pytest.raises(ValueError, match="OMADA_PLATFORM"):
         detect_platform_capabilities(env={"OMADA_PLATFORM": "linux"})

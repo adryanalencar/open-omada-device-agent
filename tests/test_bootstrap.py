@@ -1,8 +1,10 @@
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
 from open_omada_device_agent.bootstrap import AgentSettings, build_runtime
+from open_omada_device_agent.application.settings import GenieAcsSettings
 from open_omada_device_agent.contexts.lifecycle.domain import ManagedState
 
 
@@ -94,4 +96,64 @@ def test_settings_reject_missing_openwrt_lan_target():
     )
 
     with pytest.raises(RuntimeError, match="OMADA_OPENWRT_LAN_INTERFACE"):
+        settings.validate()
+
+
+def test_settings_validate_genieacs_backend_configuration():
+    settings = replace(
+        AgentSettings.from_environment(),
+        platform="genieacs",
+        controller_host="controller.example.test",
+        genieacs=GenieAcsSettings(
+            url="https://acs.example.test:7557",
+            device_id="001122-Example-ABC123",
+            timeout_seconds=10,
+            apply_timeout_seconds=15,
+        ),
+    )
+
+    settings.validate()
+
+
+def test_settings_reject_invalid_genieacs_backend_configuration():
+    settings = replace(
+        AgentSettings.from_environment(),
+        platform="genieacs",
+        controller_host="controller.example.test",
+        genieacs=GenieAcsSettings(url="not-a-url", device_id=""),
+    )
+
+    with pytest.raises(RuntimeError, match="GENIEACS_URL"):
+        settings.validate()
+
+
+def test_genieacs_settings_repr_redacts_credentials():
+    settings = GenieAcsSettings(
+        url="https://acs.example.test:7557",
+        device_id="device-id",
+        username="operator",
+        password="do-not-log-this-password",
+        token="do-not-log-this-token",
+    )
+
+    rendered = repr(settings)
+
+    assert "operator" in rendered
+    assert "do-not-log-this-password" not in rendered
+    assert "do-not-log-this-token" not in rendered
+
+
+def test_genieacs_settings_reject_missing_ca_bundle():
+    settings = replace(
+        AgentSettings.from_environment(),
+        platform="genieacs",
+        controller_host="controller.example.test",
+        genieacs=GenieAcsSettings(
+            url="https://acs.example.test:7557",
+            device_id="device-id",
+            ca_bundle=Path("/definitely/not/a/real/ca.pem"),
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="GENIEACS_CA_BUNDLE"):
         settings.validate()

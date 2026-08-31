@@ -117,9 +117,9 @@ def capability_summary(capabilities: PlatformCapabilities) -> str:
 
 
 def _platform(env: Mapping[str, str]) -> str:
-    value = env.get("OMADA_PLATFORM", "auto").strip().lower()
-    if value not in {"auto", "openwrt", "generic"}:
-        raise ValueError("OMADA_PLATFORM must be auto, openwrt or generic")
+    value = env.get("OPENOMADA_PLATFORM", env.get("OMADA_PLATFORM", "auto")).strip().lower()
+    if value not in {"auto", "openwrt", "generic", "genieacs"}:
+        raise ValueError("OPENOMADA_PLATFORM/OMADA_PLATFORM must be auto, openwrt, generic or genieacs")
     return value
 
 
