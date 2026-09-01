@@ -93,6 +93,7 @@ class AgentSettings(RuntimeAgentSettings):
                 max_device_staleness_seconds=config.GENIEACS_MAX_DEVICE_STALENESS_SECONDS,
                 max_client_staleness_seconds=config.GENIEACS_MAX_CLIENT_STALENESS_SECONDS,
                 refresh_interval_seconds=config.GENIEACS_REFRESH_INTERVAL_SECONDS,
+                identity_mac_paths=config.GENIEACS_IDENTITY_MAC_PATHS,
             ),
         )
 

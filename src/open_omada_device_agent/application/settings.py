@@ -19,6 +19,7 @@ class GenieAcsSettings:
     max_device_staleness_seconds: int = 300
     max_client_staleness_seconds: int = 120
     refresh_interval_seconds: int = 300
+    identity_mac_paths: tuple[str, ...] = ()
 
     def validate(self) -> None:
         parsed = urlparse(self.url)
@@ -42,6 +43,9 @@ class GenieAcsSettings:
             raise RuntimeError("GENIEACS_REFRESH_INTERVAL_SECONDS must be greater than zero")
         if self.ca_bundle is not None and not self.ca_bundle.exists():
             raise RuntimeError(f"GENIEACS_CA_BUNDLE does not exist: {self.ca_bundle}")
+        for path in self.identity_mac_paths:
+            if not _valid_genieacs_parameter_path(path):
+                raise RuntimeError("GENIEACS_IDENTITY_MAC_PATHS contains an invalid parameter path")
 
 
 @dataclass(frozen=True)
@@ -129,3 +133,13 @@ class AgentSettings:
             raise RuntimeError(f"OMADA_TLS_CA_FILE does not exist: {self.tls_ca_file}")
         if self.platform == "genieacs":
             self.genieacs.validate()
+
+
+def _valid_genieacs_parameter_path(path: str) -> bool:
+    return bool(path) and not (
+        any(ord(char) < 32 for char in path)
+        or " " in path
+        or ".." in path
+        or path.startswith(".")
+        or path.endswith(".")
+    )

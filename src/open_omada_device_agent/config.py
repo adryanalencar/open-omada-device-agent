@@ -155,6 +155,11 @@ GENIEACS_MAX_CLIENT_STALENESS_SECONDS = _int(
     120,
 )
 GENIEACS_REFRESH_INTERVAL_SECONDS = _int("GENIEACS_REFRESH_INTERVAL_SECONDS", 300)
+GENIEACS_IDENTITY_MAC_PATHS = tuple(
+    path.strip()
+    for path in os.getenv("GENIEACS_IDENTITY_MAC_PATHS", "").split(",")
+    if path.strip()
+)
 
 # Keep the historical filename for backward compatibility with existing labs.
 _state_mac = MAC.replace(":", "").replace("-", "").lower()
