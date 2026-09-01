@@ -42,8 +42,10 @@ flowchart TD
   Bootstrap --> Application
   Application --> Domain[Bounded-context domain]
   OpenWrt[OpenWrt outbound adapters] --> Application
+  GenieACS[GenieACS outbound adapter] --> Application
   Persistence[JSON state adapter] --> Application
   Application -. port .-> OpenWrt
+  Application -. port .-> GenieACS
   Application -. repository port .-> Persistence
 ```
 
@@ -137,8 +139,16 @@ Current application ports are `ConfigurationPort`, `CapabilityDetector`,
 `InformProvider`, and `SessionStateRepository`. Configuration ports are consumed
 by the cross-context `ApplyDeviceConfiguration` orchestrator; implementations are
 `OpenWrtUciAdapter`, `OpenWrtPortalRuntime`, `SysfsLedAdapter`, and
-`OpenWrtClientControlAdapter`. `InformAssembler` receives callable observation
-ports. Managed state is represented in lifecycle domain and persisted by the injected
+`OpenWrtClientControlAdapter`.
+
+The `adapters.outbound.genieacs` package is the Phase 1 foundation for a remote
+TR-069 backend. It contains an NBI HTTP client, explicit task-result states, and
+a normalized parameter tree. It is intentionally not wired into ECSP runtime
+composition yet, and it must remain behind the same application ports when later
+phases add profiles, telemetry, and configuration reconciliation.
+
+`InformAssembler` receives callable observation ports. Managed state is
+represented in lifecycle domain and persisted by the injected
 `JsonSessionStateRepository` adapter under `contexts.lifecycle.infrastructure`.
 
 ## Extension points
@@ -148,6 +158,10 @@ ports. Managed state is represented in lifecycle domain and persisted by the inj
 Implement the application ports using platform-native APIs, add observation
 collectors, then select them in `bootstrap.runtime`. Do not change ECSP framing,
 configuration mapping, or domain models for platform command syntax.
+
+For remote platforms such as GenieACS-backed TR-069 CPEs, the same rule applies:
+the backend translates remote management observations/tasks into existing domain
+commands and observations. ECSP handlers should not call GenieACS NBI directly.
 
 ### Add a device profile
 

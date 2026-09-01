@@ -89,7 +89,8 @@ OMADA_TLS_CA_FILE=/etc/open-omada/controller-ca.pem
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `OMADA_PLATFORM` | `auto` | `auto`, `openwrt`, or `generic` capability detection |
+| `OPENOMADA_PLATFORM` | `auto` | Preferred platform selector. Use `genieacs` for the remote GenieACS/TR-069 backend once runtime wiring is enabled. |
+| `OMADA_PLATFORM` | `auto` | Backward-compatible platform selector for `auto`, `openwrt`, `generic`, or `genieacs` |
 | `OMADA_RADIO_BANDS` | `2g` | Comma-separated supported AP bands: `2g,5g,5g2,6g` |
 | `OMADA_MAX_SSIDS` | `4` | Manual upper bound for SSIDs the platform adapter will accept. On OpenWrt, `iw list` can reduce this automatically when the radio does not support multiple AP interfaces. |
 | `OMADA_CAP_WLAN` | auto on OpenWrt with `uci` | Enable WLAN/radio UCI reconciliation |
@@ -240,3 +241,38 @@ The default state file is derived from the device MAC:
 
 Override with `OMADA_STATE_FILE` when needed. The file is Git-ignored by
 default.
+
+## GenieACS / TR-069 backend
+
+The GenieACS backend is a remote-device backend. GenieACS remains the ACS and
+owns TR-069/CWMP; OpenOmada communicates only with the GenieACS NBI HTTP API.
+Phase 1 includes configuration, the NBI client, explicit task state modeling,
+and normalized parameter parsing. ECSP runtime wiring, TR-181/TR-098 profiles,
+telemetry, and writes are still planned.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `GENIEACS_URL` | empty | GenieACS NBI base URL, for example `https://acs.example.net:7557` |
+| `GENIEACS_DEVICE_ID` | empty | Exact GenieACS `_id` for the one CPE represented by this OpenOmada process |
+| `GENIEACS_TIMEOUT_SECONDS` | `10` | HTTP timeout for NBI reads and ordinary task requests |
+| `GENIEACS_APPLY_TIMEOUT_SECONDS` | `15` | Future bounded wait budget for applying and verifying controller-originated configuration |
+| `GENIEACS_VERIFY_TLS` | `true` | Verify GenieACS HTTPS certificates by default |
+| `GENIEACS_CA_BUNDLE` | empty | Optional CA bundle for GenieACS HTTPS |
+| `GENIEACS_USERNAME` | empty | Optional Basic Auth username |
+| `GENIEACS_PASSWORD` | empty | Optional Basic Auth password; never store in managed ECSP state |
+| `GENIEACS_TOKEN` | empty | Optional bearer token; takes precedence over Basic Auth in the NBI client |
+| `GENIEACS_MAX_RESPONSE_BYTES` | `1048576` | Maximum accepted HTTP response body size |
+| `GENIEACS_MAX_DEVICE_STALENESS_SECONDS` | `300` | Future freshness window for `_lastInform` |
+| `GENIEACS_MAX_CLIENT_STALENESS_SECONDS` | `120` | Future freshness window for associated-client data |
+| `GENIEACS_REFRESH_INTERVAL_SECONDS` | `300` | Future minimum interval between active refresh/probe operations |
+
+Example:
+
+```dotenv
+OPENOMADA_PLATFORM=genieacs
+GENIEACS_URL=https://acs.example.net:7557
+GENIEACS_DEVICE_ID=001122-Example-ABC123
+GENIEACS_VERIFY_TLS=true
+GENIEACS_CA_BUNDLE=/etc/ssl/certs/genieacs-ca.pem
+GENIEACS_TOKEN=
+```

@@ -13,6 +13,8 @@ by Open Omada Device Agent.
 | [Architecture](architecture.md) | Internal module boundaries and runtime data flow |
 | [Configuration](configuration.md) | Environment variables and deployment guidance |
 | [Protocol status](protocol-status.md) | Implemented and planned message families |
+| [GenieACS backend](genieacs.md) | Remote TR-069/CWMP CPE integration through GenieACS NBI |
+| [TR-069 device support](tr069-device-support.md) | Compatibility matrix for GenieACS-backed device profiles |
 | [Research methodology](research-methodology.md) | Evidence model and clean-room documentation rules |
 | [Development](development.md) | Tests, style, and contributor workflow |
 

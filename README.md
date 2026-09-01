@@ -44,6 +44,7 @@ Omada Network Application `6.2.14.11` and an EAP110 v4-compatible AP profile.
 | FORGET / forget-no-reset response | ✅ Working |
 | Captive portal sessions/enforcement | 🟡 openNDS enforcement, free-policy walled garden, TP-Link External Portal redirect parameters, and client auth state are wired |
 | Portal RADIUS authentication | 🟡 Library support; not wired to HTTP portal flow |
+| GenieACS / TR-069 backend | 🚧 Phase 1 foundation: settings, NBI client, task status model, and normalized parameter tree; not wired into ECSP runtime yet |
 | `GET_REQUEST` | 🟡 Defensive unsupported-key responses |
 | Notify families | 🟡 Defensive unsupported replies |
 | Report family | 🚧 Envelope and protobuf DTOs identified; `reportData` serializer not implemented |
@@ -293,6 +294,8 @@ and prints the last lines from `/tmp/open-omada-agent.log`.
 - [Project architecture](docs/architecture.md)
 - [Configuration reference](docs/configuration.md)
 - [Protocol support matrix](docs/protocol-status.md)
+- [GenieACS backend](docs/genieacs.md)
+- [TR-069 device support matrix](docs/tr069-device-support.md)
 - [Research methodology](docs/research-methodology.md)
 - [Development guide](docs/development.md)
 - [Security model](SECURITY.md)
