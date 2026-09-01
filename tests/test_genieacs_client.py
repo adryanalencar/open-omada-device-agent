@@ -15,6 +15,7 @@ from open_omada_device_agent.adapters.outbound.genieacs.client import (
     redact_headers,
 )
 from open_omada_device_agent.adapters.outbound.genieacs.models import GenieAcsTaskState
+from open_omada_device_agent.adapters.outbound.genieacs.parameters import ParameterWrite
 
 
 @dataclass
@@ -105,8 +106,8 @@ def test_set_parameter_values_sends_typed_entries_without_shelling_out():
     result = client.set_parameter_values(
         "device-id",
         (
-            ("Device.WiFi.SSID.1.SSID", "Media Beach", "xsd:string"),
-            ("Device.WiFi.Radio.1.Enable", True, "xsd:boolean"),
+            ParameterWrite("Device.WiFi.SSID.1.SSID", "Media Beach", "xsd:string"),
+            ParameterWrite.infer("Device.WiFi.Radio.1.Enable", True),
         ),
     )
 

@@ -279,6 +279,8 @@ class GenieAcsNbiClient:
     ) -> GenieAcsTaskResult:
         values: list[list[Any]] = []
         for value in parameter_values:
+            if hasattr(value, "as_task_entry"):
+                value = value.as_task_entry()
             if len(value) != 3:
                 raise ValueError("setParameterValues entries must be [path, value, xsd_type]")
             path, raw_value, value_type = value
