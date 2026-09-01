@@ -38,12 +38,14 @@ identifiers.
 
 ## Remote-device backends
 
-GenieACS/TR-069 support is in Phase 1 foundation status. The repository now has
+GenieACS/TR-069 support is in Phase 2 foundation status. The repository now has
 configuration fields, a bounded GenieACS NBI HTTP client, task status modeling
-that distinguishes immediate execution from queued tasks, and a normalized
-parameter-tree abstraction for GenieACS device documents. It is not yet wired
-into the ECSP runtime, does not yet advertise GenieACS-derived capabilities, and
-does not yet apply Omada SET requests through TR-069.
+that distinguishes immediate execution from queued tasks, a normalized
+parameter-tree abstraction, deterministic CPE identity extraction, selected-CPE
+probing, and generic TR-181/TR-098 profile/capability detection. It is not yet
+wired into the ECSP runtime, does not yet advertise GenieACS-derived
+capabilities to Omada, and does not yet apply Omada SET requests through
+TR-069.
 
 ## Capability policy
 

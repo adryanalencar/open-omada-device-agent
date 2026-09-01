@@ -44,7 +44,7 @@ Omada Network Application `6.2.14.11` and an EAP110 v4-compatible AP profile.
 | FORGET / forget-no-reset response | ✅ Working |
 | Captive portal sessions/enforcement | 🟡 openNDS enforcement, free-policy walled garden, TP-Link External Portal redirect parameters, and client auth state are wired |
 | Portal RADIUS authentication | 🟡 Library support; not wired to HTTP portal flow |
-| GenieACS / TR-069 backend | 🚧 Phase 1 foundation: settings, NBI client, task status model, and normalized parameter tree; not wired into ECSP runtime yet |
+| GenieACS / TR-069 backend | 🚧 Phase 2 foundation: settings, NBI client, parameter tree, selected-CPE probe, TR-181/TR-098 profile detection, identity mapping, and conservative capability model; not wired into ECSP runtime yet |
 | `GET_REQUEST` | 🟡 Defensive unsupported-key responses |
 | Notify families | 🟡 Defensive unsupported replies |
 | Report family | 🚧 Envelope and protobuf DTOs identified; `reportData` serializer not implemented |

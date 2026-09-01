@@ -16,7 +16,7 @@ flowchart LR
 
 ## Current phase
 
-Phase 1 implements only the foundation:
+Phase 2 implements the backend foundation and CPE model probe:
 
 - immutable settings for the GenieACS backend;
 - a small standard-library NBI HTTP client;
@@ -25,7 +25,12 @@ Phase 1 implements only the foundation:
 - optional bearer token or Basic Auth;
 - header redaction helpers so Authorization values are not logged;
 - explicit task states for `200` executed, `202` queued, and faulted tasks;
-- normalized TR-069 parameter trees from GenieACS device documents.
+- normalized TR-069 parameter trees from GenieACS device documents;
+- exact `_id` CPE lookup with a bounded projection;
+- deterministic identity extraction from TR-181/TR-098 metadata;
+- configurable MAC preference paths when a CPE exposes several MAC addresses;
+- generic TR-181 and TR-098 profile detection;
+- conservative capability detection based on parameter presence and writability.
 
 The backend is not yet selected by `build_runtime()`. OpenWrt remains the only
 runtime-wired platform backend in this phase.
@@ -46,11 +51,33 @@ GENIEACS_CA_BUNDLE=/etc/ssl/certs/genieacs-ca.pem
 GENIEACS_TOKEN=
 GENIEACS_USERNAME=
 GENIEACS_PASSWORD=
+GENIEACS_IDENTITY_MAC_PATHS=Device.WiFi.SSID.1.MACAddress,Device.Ethernet.Interface.1.MACAddress
 ```
 
 The model is intentionally one CPE per OpenOmada process. The canonical CPE
 reference is the exact GenieACS `_id`; multi-device orchestration is a later
 supervisor concern.
+
+## Device probe
+
+`GenieAcsDeviceDiscovery` performs the Phase 2 probe:
+
+```mermaid
+sequenceDiagram
+  participant Agent as OpenOmada GenieACS adapter
+  participant NBI as GenieACS NBI
+  participant Profile as TR-069 profile selector
+
+  Agent->>NBI: GET /devices?query={"_id": "..."}&projection=...
+  NBI-->>Agent: GenieACS device document
+  Agent->>Agent: Normalize parameters
+  Agent->>Profile: Select TR-181 or TR-098
+  Profile-->>Agent: Identity and capabilities
+```
+
+If no supported `Device.*` or `InternetGatewayDevice.*` tree is cached, the
+probe can optionally submit `refreshObject` for both roots. A `202` queued
+refresh raises a queued-probe result and is not treated as successful discovery.
 
 ## NBI operations
 
@@ -100,10 +127,10 @@ inside OpenOmada, `AA-BB-CC-DD-EE-FF` only at Omada-facing boundaries.
 
 ## TR-181 and TR-098 status
 
-Phase 1 does not map Wi-Fi objects yet. It only provides the parameter-tree
-foundation needed by profiles.
+Phase 2 detects generic TR-181 and TR-098 profiles and computes capabilities
+from available parameters. It does not yet project telemetry or apply writes.
 
-Planned TR-181 areas:
+TR-181 discovery areas:
 
 - `Device.WiFi.Radio.{i}`;
 - `Device.WiFi.SSID.{i}`;
@@ -111,13 +138,22 @@ Planned TR-181 areas:
 - `Device.WiFi.AccessPoint.{i}.Security`;
 - `Device.WiFi.AccessPoint.{i}.AssociatedDevice.{i}`.
 
-Planned TR-098 areas:
+TR-098 discovery areas:
 
 - `InternetGatewayDevice.LANDevice.{i}.WLANConfiguration.{i}`;
 - related security and associated-device tables where present.
 
 Profiles must build relationships from references and parameter existence, not
 from fixed assumptions such as instance `.1` always meaning 2.4 GHz.
+
+Generic profile capabilities are intentionally limited:
+
+- Wi-Fi/radio/SSID read support comes from object presence.
+- Radio enable, channel, SSID, and WPA2-PSK support require writable parameters.
+- Client support comes from associated-device tables or entry counters.
+- Client signal/traffic support requires corresponding client parameters.
+- Portal, VLAN, client control, and vendor extensions remain unsupported in the
+  generic profiles.
 
 ## Security constraints
 
@@ -128,6 +164,7 @@ from fixed assumptions such as instance `.1` always meaning 2.4 GHz.
 - GenieACS password/token settings are excluded from `repr`.
 - No GenieACS credentials are written to managed ECSP state.
 - The adapter does not shell out and does not query MongoDB.
+- `GENIEACS_IDENTITY_MAC_PATHS` accepts only validated TR-069 parameter paths.
 
 ## Testing
 

@@ -246,9 +246,10 @@ default.
 
 The GenieACS backend is a remote-device backend. GenieACS remains the ACS and
 owns TR-069/CWMP; OpenOmada communicates only with the GenieACS NBI HTTP API.
-Phase 1 includes configuration, the NBI client, explicit task state modeling,
-and normalized parameter parsing. ECSP runtime wiring, TR-181/TR-098 profiles,
-telemetry, and writes are still planned.
+Phase 2 includes configuration, the NBI client, explicit task state modeling,
+normalized parameter parsing, selected-device probing, TR-181/TR-098 profile
+selection, identity mapping, and conservative capability detection. ECSP
+runtime wiring, telemetry, and writes are still planned.
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -265,6 +266,7 @@ telemetry, and writes are still planned.
 | `GENIEACS_MAX_DEVICE_STALENESS_SECONDS` | `300` | Future freshness window for `_lastInform` |
 | `GENIEACS_MAX_CLIENT_STALENESS_SECONDS` | `120` | Future freshness window for associated-client data |
 | `GENIEACS_REFRESH_INTERVAL_SECONDS` | `300` | Future minimum interval between active refresh/probe operations |
+| `GENIEACS_IDENTITY_MAC_PATHS` | empty | Optional comma-separated TR-069 parameter path preference list for selecting the Omada identity MAC |
 
 Example:
 
@@ -275,4 +277,5 @@ GENIEACS_DEVICE_ID=001122-Example-ABC123
 GENIEACS_VERIFY_TLS=true
 GENIEACS_CA_BUNDLE=/etc/ssl/certs/genieacs-ca.pem
 GENIEACS_TOKEN=
+GENIEACS_IDENTITY_MAC_PATHS=Device.WiFi.SSID.1.MACAddress,Device.Ethernet.Interface.1.MACAddress
 ```
