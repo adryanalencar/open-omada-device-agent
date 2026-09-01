@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping
 
+from ....contexts.wireless.domain import RadioBand
+
 
 class Tr069DataModel(str, Enum):
     TR181 = "tr181"
@@ -67,3 +69,34 @@ class MacSelection:
     mac: str
     path: str
     role: str
+
+
+@dataclass(frozen=True)
+class Tr069ObjectRef:
+    path: str
+    instance: str
+
+
+@dataclass(frozen=True)
+class GenieAcsCapabilities:
+    profile: str
+    data_model: Tr069DataModel
+    has_device_info: bool = False
+    has_wifi: bool = False
+    radio_count: int = 0
+    ssid_count: int = 0
+    access_point_count: int = 0
+    client_table_count: int = 0
+    radio_bands: tuple[RadioBand, ...] = ()
+    supports_radio_read: bool = False
+    supports_radio_enable: bool = False
+    supports_channel_write: bool = False
+    supports_ssid_read: bool = False
+    supports_ssid_write: bool = False
+    supports_wpa2_psk: bool = False
+    supports_clients: bool = False
+    supports_client_signal: bool = False
+    supports_client_traffic: bool = False
+    supports_vlan: bool = False
+    supports_portal: bool = False
+    supports_client_control: bool = False
